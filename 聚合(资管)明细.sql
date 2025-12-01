@@ -48,8 +48,8 @@ SELECT
         WHEN t5.service_order_complete_time is not null
           and t6.first_create_time is not null
         THEN (
-            unix_timestamp(t6.first_create_time, 'yyyy-MM-dd HH:mm:ss')
-            - unix_timestamp(t5.service_order_complete_time, 'yyyy-MM-dd HH:mm:ss')
+            unix_timestamp(t5.service_order_complete_time, 'yyyy-MM-dd HH:mm:ss')
+            - unix_timestamp(t6.first_create_time, 'yyyy-MM-dd HH:mm:ss')
         ) / 3600.0
         ELSE NULL
     END as `calc_duration_baowai_hours`
@@ -57,15 +57,15 @@ SELECT
 FROM (
     SELECT *
     FROM rpt.rpt_plat_manager_workbench_manager_task_da
-    WHERE pt = '${-1d_pt}'
+    WHERE pt = '20251130000000'
       AND task_define_id = '447'
 ) t1
 
 -- 关联 t2 (已去重，只取换新跟进)
 LEFT JOIN (
     select property_code, max(item_data) as item_data
-    from dw_plat_lease_property_property_delivery_detail_da
-    where pt = '${-1d_pt}'  
+    from dw.dw_plat_lease_property_property_delivery_detail_da
+    where pt = '20251130000000'  
       and item_data like '%huanxingenjin%'  
     group by property_code
 ) t2 ON t1.downstream_code = t2.property_code
@@ -76,14 +76,11 @@ LEFT JOIN ods.ods_plat_beijia_transaction_trade_order_replace_info_da t3
 LEFT JOIN ( 
     SELECT * 
     FROM olap.olap_hj_fas_main_order_service_info_da 
-    WHERE pt = '${-1d_pt}' 
-) t5 ON t3.replace_order_code = t5.order_no
+    WHERE pt = '20251130000000' 
+) t5 ON t3.original_order_code = t5.order_no
 
 LEFT JOIN (
-    SELECT 
-        order_no,
-        min(create_time) as first_create_time
-    FROM olap.olap_hj_fas_main_order_service_out_free_repair_plan_bpm_log_da
-    WHERE pt = '${-1d_pt}'
-    GROUP BY order_no
-) t6 ON t3.replace_order_code = t6.order_no
+        select order_no,min( case when node_type =1 then `update_time` end ) as `first_create_time`
+        from olap.olap_hj_fas_main_order_service_out_free_repair_plan_bpm_log_da
+        where pt = '20251130000000' GROUP by order_no
+    ) t6 ON t3.original_order_code = t6.order_no
