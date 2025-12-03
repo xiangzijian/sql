@@ -20,14 +20,14 @@ select t1.city_name,
     ) as `已完结`,
     count(
         DISTINCT case
-            when t5.order_no is not null
-            and t5.last_suspend_remark = '包外方案申请' then t5.order_no
+            when t6.order_no is not null
+             then t6.order_no
         end
     ) as `baowai`,
     count(
         DISTINCT case
             when t6.has_operate_1 =1 
-            then t5.order_no
+            then t6.order_no
         end
     ) as `baowai1`,
     sum(
@@ -52,17 +52,17 @@ select t1.city_name,
 from (
         select *
         from rpt.rpt_plat_manager_workbench_manager_task_da
-        where pt = '${-1d_pt}'
+        where pt = '20251202000000'
             and task_define_id = '447'
     ) t1
     left join (
         select *
-        from ods.ods_plat_beijia_transaction_trade_order_replace_info_da
+        from ods.ods_plat_beijia_transaction_trade_order_replace_info_da WHERE pt = '20251202000000'
     ) t3 on t1.task_id = t3.task_id
     left join (
         SELECT *
         FROM olap.olap_hj_fas_main_order_service_info_da
-        WHERE pt = '${-1d_pt}'
+        WHERE pt = '20251202000000'
     ) t5 on t3.original_order_code = t5.order_no
     LEFT JOIN (
         select order_no,

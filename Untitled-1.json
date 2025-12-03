@@ -1,0 +1,124 @@
+{
+    "content": null,
+    "groupCode": "huanxingenjin",
+    "groupName": "换新跟进",
+    "houseConditionShowSoundRecording": false,
+    "itemList": [
+        {
+            "description": null,
+            "faultPointId": null,
+            "faultPointName": null,
+            "forcedFillIn": null,
+            "groupCode": null,
+            "groupName": null,
+            "innerDetailList": [
+                {
+                    "fieldDetailList": [
+                        {
+                            "code": "sftykhsq",
+                            "houseConditionShowInList": false,
+                            "isExternalShow": false,
+                            "name": "是否同意客户诉求",
+                            "needServiceItem": false,
+                            "serviceItemList": null,
+                            "showInList": false,
+                            "value": "是",
+                            "valueExt": null
+                        },
+                        {
+                            "code": "jqsfwqx",
+                            "houseConditionShowInList": false,
+                            "isExternalShow": false,
+                            "name": "机器是否为全新",
+                            "needServiceItem": false,
+                            "serviceItemList": null,
+                            "showInList": false,
+                            "value": "全新",
+                            "valueExt": null
+                        },
+                        {
+                            "code": "fycdf",
+                            "houseConditionShowInList": false,
+                            "isExternalShow": false,
+                            "name": "费用承担方",
+                            "needServiceItem": false,
+                            "serviceItemList": null,
+                            "showInList": false,
+                            "value": [
+                                "业主"
+                            ],
+                            "valueExt": null
+                        },
+                        {
+                            "code": "goumaiqudao",
+                            "houseConditionShowInList": false,
+                            "isExternalShow": false,
+                            "name": "购买渠道",
+                            "needServiceItem": false,
+                            "serviceItemList": null,
+                            "showInList": false,
+                            "value": "电商平台购买",
+                            "valueExt": null
+                        },
+                        {
+                            "code": "wuliudanhao",
+                            "houseConditionShowInList": false,
+                            "isExternalShow": false,
+                            "name": "物流单号",
+                            "needServiceItem": false,
+                            "serviceItemList": null,
+                            "showInList": false,
+                            "value": "",
+                            "valueExt": null
+                        },
+                        {
+                            "code": "scgmpz",
+                            "houseConditionShowInList": false,
+                            "isExternalShow": false,
+                            "name": "上传购买凭证",
+                            "needServiceItem": false,
+                            "serviceItemList": null,
+                            "showInList": false,
+                            "value": [],
+                            "valueExt": null
+                        },
+                        {
+                            "code": "zksfrtzzcljg",
+                            "houseConditionShowInList": false,
+                            "isExternalShow": false,
+                            "name": "租客是否认同最终处理结果",
+                            "needServiceItem": false,
+                            "serviceItemList": null,
+                            "showInList": false,
+                            "value": null,
+                            "valueExt": null
+                        },
+                        {
+                            "code": "scgtjt",
+                            "houseConditionShowInList": false,
+                            "isExternalShow": false,
+                            "name": "上传沟通截图",
+                            "needServiceItem": false,
+                            "serviceItemList": null,
+                            "showInList": false,
+                            "value": [],
+                            "valueExt": null
+                        }
+                    ],
+                    "index": null
+                }
+            ],
+            "isCheckSuccess": null,
+            "isEdit": true,
+            "isFillVrData": false,
+            "itemCode": "huanxingenjin",
+            "itemName": "换新跟进",
+            "minorRepair": null,
+            "originGroupCode": null,
+            "originGroupName": null,
+            "qualified": null,
+            "sysCalculateValue": null,
+            "type": 1
+        }
+    ]
+}
