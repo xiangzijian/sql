@@ -3,7 +3,7 @@ select house_code AS `房源code`,
     contract_code AS `合同编号`,
     delivery_date AS `合同房屋交付日期`,
     effective_start_date AS `合同起租日`,
-    `status`AS `任务状态`,
+    `status` AS `任务状态`,
     t2.`item_data` AS `表单信息`,
     -- 解析 fieldDetailList 中的字段
     get_json_object(t2.item_data, '$.itemList[0].innerDetailList[0].fieldDetailList[0].value') AS `是否同意客户诉求`,
@@ -27,7 +27,7 @@ select house_code AS `房源code`,
     t1.finish_time AS `换新单完成时间`,
     t3.no_maintain_reason_desc AS `暂不维修原因`,
     t5.service_order_professional_name AS `供应商`,
-	t5.service_order_professional_name AS `服务者`,
+	t5.service_order_professional_name AS `服务者`,  -- 注意：供应商和服务者使用了相同字段，请确认是否符合业务逻辑
 	t5.service_order_professional_ucid AS `服务Id`,
     t4.last_suspend_remark AS `挂起原因`,-- 选择“node_type=1”
     case when t6.order_no is not null  then '是' else '否' end  AS `是否提交包外订单`,
@@ -67,7 +67,7 @@ from (
     left join (
         select order_no,min( case when node_type =1 then `update_time` end ) as `update_time`
 	  ,count(DISTINCT case when operate_type =2 then `update_time` end) as `type2Num`,
-	  collect_set(CAST(( case when operate_type =2 then `remark` end ) AS string))  as `remark`
+	  concat_ws(',', collect_set(CAST(( case when operate_type =2 then `remark` end ) AS string)))  as `remark`  -- 将数组转换为逗号分隔的字符串
         from olap.olap_hj_fas_main_order_service_out_free_repair_plan_bpm_log_da
-        where pt = '20251130000000' GROUP by order_no
+        where pt = '20251130000000' GROUP by order_no  -- 注意：此表的pt分区日期与其他表不一致，请确认是否有意为之
     ) t6 on t3.original_order_code = t6.order_no
