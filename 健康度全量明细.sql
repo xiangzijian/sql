@@ -103,7 +103,7 @@ end as `紧急单是否30min致电`,
 END as `是否3日完工`,
 a.manager_area_name as `业务区域/组`,
 a.manager_marketing_name as `营销大区/大部`,
-case when label_group in ('1','25') then '检修' when label_group not in ('1','8','25') then '租后维修' end as `维修类型`,
+case when label_group in ('1','25') then '检修' when label_group not in ('1','8','25') and lease_status IN ('2','3') then '租后维修' end as `维修类型`,
 case when d.service_order_code is not null then '是' else '否' end as `是否暂不维修`,
 d.reason as `暂不维修原因`
  from
@@ -157,7 +157,8 @@ END )  AS is_not
     where pt = '${-1d_pt}'
     AND order_type = 16
     AND label_group NOT IN ('8') and 
-    substr(order_create_time,1,7)>='2025-04'
+    substr(order_create_time,1,7)>='2025-01'
+    and lease_status IN ('-1','1','2','3') 
     group by order_no,manager_marketing_name,manager_corp_name,order_create_time,lease_status,service_order_code,service_order_supplier_name,service_order_professional_name,service_order_professional_ucid,label_group
     ) AS a
     inner join (
@@ -190,21 +191,19 @@ left join
   
 FROM rpt.rpt_jiafu_urgent_order_info_da
 WHERE pt = '${-1d_pt}'
-and substr(order_create_time,1,7)>='2025-04'
+and substr(order_create_time,1,7)>='2025-01'
 and (urgent_flag in  (1,2) or performance_mode in  (1,2))
  group by order_create_time,order_no
 )
 kk 
 on kk.order_no_1 =  a.order_no
-left join ( select service_order_code,concat_ws(';', collect_set(reason)) as reason from 
+left join ( select service_order_code,concat_ws('；', collect_set(reason)) as reason from 
            ( select service_order_code,case when reason_code = 104 then '无法维修,且租客认同暂不处理' 
            when reason_code =105 then '无法维修,且资管确认不做处理' when reason_code =108 then '已确认业主处理' 
-           when reason_code =101 then '可正常使用,无法维修' when reason_code =102 then '无法维修且租客希望换新' 
+           when reason_code =101 then '可正常使用,无需维修' when reason_code =102 then '无法维修且租客希望换新' 
            when reason_code =103 then '重复订单,无需维修' when reason_code =106 then '需其他专业人士维修(如燃气漏气、家具定制)' 
            when reason_code =107 then '需资管确认解决方案(涉及费用分摊)' 
            when reason_code =109 then '已确认物业处理' when reason_code =110 then '已确认资管自行处理'
            when reason_code =111 then '资管已确认不处理(可维修)' when reason_code =112 then '其他' end as reason from rpt.rpt_fas_jiafu_dispatch_service_order_product_da where pt='${-1d_pt}' and reason_code in (104,105,108,101,102,103,106,107,109,110,111,112) 
            ) as t1 group by service_order_code ) d on d.service_order_code = a.service_order_code
 where    label_group NOT IN ('8');
-        
-        --AND b.order_after_sign_diff_out >= '0'

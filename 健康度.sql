@@ -1,4 +1,4 @@
--- 健康度总表
+-- 健康度总表，11.24日修改去掉人脸识别异常单
 WITH numbers AS (
     SELECT
         CONCAT(year_string, '-', LPAD(n, 2, '0')) AS month_string,
@@ -73,20 +73,6 @@ excluded_orders_with_count AS (
   JOIN window_stats v
     ON p.`服务者UCID` = v.`服务者UCID`
    AND p.`锚点服务单号` = v.`锚点服务单号`
-),temp AS (
-    SELECT 
-       SUBSTR(date_stamp, 1, 7) as month,
-       city_name,
-        ticket_description,
-        order_no,
-        beiyong2,
-        CASE 
-            WHEN INSTR(beiyong2, '直线距离:') > 0 AND INSTR(beiyong2, 'km') > 0 
-            THEN CAST(SUBSTR(beiyong2, INSTR(beiyong2, '直线距离:') + 5, INSTR(beiyong2, 'km') - (INSTR(beiyong2, '直线距离:') + 5)) AS DOUBLE)
-            ELSE NULL  
-        END AS distance_km
-    FROM rpt.rpt_complain_order_details
-    WHERE pt = '${-1d_pt}' 
 )
 
 insert overwrite table rpt.rpt_jiankang_test partition (pt='${-1d_pt}')
@@ -273,7 +259,7 @@ LEFT JOIN
     lease_status,
     label_group,
     order_complete_time,
-    case when label_group in ('1','25') then order_no end as check_order,
+    case when label_group in ('1','25') OR lease_status IN ('-1','1') then order_no end as check_order,
     case when label_group not in ('1','8','25') then order_no end as zu_order ,
     case
     when city_name = '北京市' and manager_marketing_name in ('京东事业部','京东南事业部','京东南租赁运营部','京东南运营','京东运营','京南事业部','京南大部','京南运营','京西南事业部','京西南运营') then '惠居京南'
@@ -402,12 +388,16 @@ on kk.order_no_1 =  a.order_no
 left join (
     SELECT
     main.order_no as order_no_2,
-    max(IF(main.sign_state = 1 AND eowc.`服务单号` IS NULL, main.order_no, NULL)) AS e_order,
+    max(IF(feedback.feedback_type = 1 OR ext_info.sign_exception = 1, main.order_no, NULL)) AS e_order,
     max(eowc.`服务单号`) AS `10分钟窗口签到次数`
 FROM
     olap.olap_hj_fas_main_order_service_info_da main
 LEFT JOIN excluded_orders_with_count eowc
     ON main.order_no = eowc.`服务单号`
+    LEFT JOIN ( select service_order_code,max(feedback_type) as feedback_type from ods.ods_plat_jiafu_dispatch_service_order_sign_in_feedback_di where pt = '${-1d_pt}' group by service_order_code) feedback
+        ON main.service_order_code = feedback.service_order_code
+    LEFT JOIN ( select service_order_code,max(sign_exception) as sign_exception from ods.ods_plat_jiafu_dispatch_service_order_ext_info_da where pt = '${-1d_pt}' group by service_order_code) ext_info
+        ON main.service_order_code = ext_info.service_order_code
 WHERE
     main.pt = '${-1d_pt}'
     AND main.order_type = 16 

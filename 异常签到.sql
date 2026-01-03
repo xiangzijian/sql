@@ -1,4 +1,3 @@
---模板查询：异常签到-11.20明细
 WITH
 sign_details AS (
   SELECT
@@ -190,8 +189,7 @@ main_orders AS (
     pt,
     order_type,
     label_group,
-    lease_status,
-    order_creator_marketing_name
+    lease_status
   FROM olap.olap_hj_fas_main_order_service_info_da
   WHERE pt = '${-1d_pt}'
     AND order_type = 16 
@@ -200,20 +198,6 @@ main_orders AS (
     AND house_resource_id IS NOT NULL 
     AND service_order_code IS NOT NULL
     AND first_sign_time >= '2025-05-01'
-),temp AS (
-    SELECT 
-       SUBSTR(date_stamp, 1, 7) as month,
-       city_name,
-        ticket_description,
-        order_no,
-        beiyong2,
-        CASE 
-            WHEN INSTR(beiyong2, '直线距离:') > 0 AND INSTR(beiyong2, 'km') > 0 
-            THEN CAST(SUBSTR(beiyong2, INSTR(beiyong2, '直线距离:') + 5, INSTR(beiyong2, 'km') - (INSTR(beiyong2, '直线距离:') + 5)) AS DOUBLE)
-            ELSE NULL  
-        END AS distance_km
-    FROM rpt.rpt_complain_order_details
-    WHERE pt = '${-1d_pt}' and distance_km <= 1
 )
 
 
@@ -239,7 +223,7 @@ SELECT DISTINCT
   CASE WHEN t2.`服务单id` IS NOT NULL THEN concat_ws(',',t2.`10分钟内签到房源列表`) ELSE CAST(t1.house_resource_id AS string) END AS `异常签到房源列表`,
   CASE WHEN t2.`服务单id` IS NOT NULL THEN concat_ws(',',t2.`10分钟内签到服务单列表`) ELSE CAST(t1.service_order_code AS string) END AS `异常签到服务单列表`,
   CASE WHEN t2.`服务单id` IS NOT NULL THEN concat_ws(',',t2.`10分钟内签到时间列表`) ELSE date_format(t1.first_sign_time, 'yyyy-MM-dd HH:mm') END AS `异常签到服务单时间`,
-  t1.order_creator_marketing_name AS `营销大区/大部`
+  t1.manager_marketing_name AS `营销大区/大部`
 FROM main_orders t1
 INNER JOIN (
   SELECT
@@ -263,7 +247,9 @@ LEFT JOIN excluded_orders_with_count t2
 LEFT JOIN anchor_per_window aw
   ON t2.`服务者UCID` = aw.`服务者UCID`
   AND t2.`10分钟窗口起始时间` = aw.`10分钟窗口起始时间`
-LEFT JOIN temp t3
-  ON t1.order_no = t3.order_no 
+LEFT JOIN ( select service_order_code,max(feedback_type) as feedback_type from ods.ods_plat_jiafu_dispatch_service_order_sign_in_feedback_di where pt = '${-1d_pt}' group by service_order_code ) t4
+  ON t1.service_order_code = t4.service_order_code
+LEFT JOIN ( select service_order_code,max(sign_exception) as sign_exception from ods.ods_plat_jiafu_dispatch_service_order_ext_info_da where pt = '${-1d_pt}' group by service_order_code ) t5
+  ON t1.service_order_code = t5.service_order_code
 WHERE
-  ((t1.sign_state = 1 and t3.order_no is null )OR t2.`不同房源数` >= 3) 
+  (t2.`不同房源数` >= 3 OR t4.service_order_code IS NOT NULL OR t5.service_order_code IS NOT NULL) 

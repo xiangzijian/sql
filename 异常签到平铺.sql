@@ -61,20 +61,6 @@ excluded_orders_with_count AS (
   JOIN window_stats v
     ON p.`服务者UCID` = v.`服务者UCID`
    AND p.`锚点服务单id` = v.`锚点服务单id`
-),temp AS (
-    SELECT 
-       SUBSTR(date_stamp, 1, 7) as month,
-       city_name,
-        ticket_description,
-        order_no,
-        beiyong2,
-        CASE 
-            WHEN INSTR(beiyong2, '直线距离:') > 0 AND INSTR(beiyong2, 'km') > 0 
-            THEN CAST(SUBSTR(beiyong2, INSTR(beiyong2, '直线距离:') + 5, INSTR(beiyong2, 'km') - (INSTR(beiyong2, '直线距离:') + 5)) AS DOUBLE)
-            ELSE NULL  
-        END AS distance_km
-    FROM rpt.rpt_complain_order_details
-    WHERE pt = '${-1d_pt}' 
 )
 
 insert overwrite table rpt.rpt_weixiu_abnormal_p partition (pt='${-1d_pt}')
@@ -92,7 +78,11 @@ SELECT
   END AS `供应商`,
   t1.service_order_professional_ucid AS `服务者UCID`,
   t1.service_order_professional_name AS `服务者姓名`,
-  CASE WHEN t2.`服务单id` IS NOT NULL THEN '短时间多次' ELSE '异常距离' END AS `异常签到原因`,
+  CASE 
+    WHEN t2.`服务单id` IS NOT NULL THEN '短时间多次' 
+    WHEN t4.feedback_type = 1 OR t5.sign_exception = 1 THEN '异常距离' 
+    ELSE '异常距离' 
+  END AS `异常签到原因`,
   t1.first_sign_time AS `异常签到开始时间`,
   t1.house_resource_id as `房源id`,
   t1.service_order_code as `服务单id`,
@@ -100,7 +90,7 @@ SELECT
   when t1.order_status='23' then '待服务' 
   when t1.order_status='24' then '服务中' when t1.order_status='30' then '待付款'  when t1.order_status='40' then '订单完成'  when t1.order_status='50' then '订单取消'  when t1.order_status='11' then '成团中'  else t1.order_status end as `订单状态`,
   case when t1.performance_mode='0' then '普通单' when t1.performance_mode='1' then '紧急单'  when t1.performance_mode='2' then '加急单'  else  t1.performance_mode end  as `紧急单标识`,
-t1.order_creator_marketing_name as `营销大区/大部`
+t1.manager_marketing_name as `营销大区/大部`
 FROM olap.olap_hj_fas_main_order_service_info_da t1
 INNER JOIN (
   SELECT
@@ -122,8 +112,10 @@ INNER JOIN (
   ON t1.order_no = b.oth_orderno
 LEFT JOIN excluded_orders_with_count t2
   ON t1.service_order_code = t2.`服务单id`
-LEFT JOIN temp t3
-  ON t1.order_no = t3.order_no 
+LEFT JOIN ( select service_order_code,max(feedback_type) as feedback_type from ods.ods_plat_jiafu_dispatch_service_order_sign_in_feedback_di where pt = '${-1d_pt}' group by service_order_code )   t4
+  ON t1.service_order_code = t4.service_order_code
+LEFT JOIN ( select service_order_code,max(sign_exception) as sign_exception from ods.ods_plat_jiafu_dispatch_service_order_ext_info_da where pt = '${-1d_pt}' group by service_order_code ) t5
+  ON t1.service_order_code = t5.service_order_code
 WHERE
   t1.pt = '${-1d_pt}'
   AND t1.order_type = 16 
@@ -131,6 +123,5 @@ WHERE
   AND t1.lease_status IN (2,3) 
   AND t1.house_resource_id IS NOT NULL 
   AND t1.service_order_code IS NOT NULL 
-  AND ((t1.sign_state = 1 and (t3.order_no is null or t3.distance_km > 1 )  )OR t2.`服务单id` IS not NULL)
+  AND ((t1.sign_state = 1 and (t4.feedback_type = 1 OR t5.sign_exception = 1)) OR t2.`服务单id` IS not NULL)
   AND t1.first_sign_time >= '2025-05-01'
-
