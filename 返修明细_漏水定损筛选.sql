@@ -5,11 +5,11 @@ SELECT DISTINCT a.`服务单编码`,a.`城市`,a.`营销大区/大部`,a.`业务
 t4.service_order_professional_name as `返修服务者姓名`,t4.service_order_professional_ucid as `返修服务者ucid`,
 t4.service_order_supplier_name  as `返修商`,	a.`供应商编码`,a.is_6_item as `是否6项商品`,
 case when b.`返修商品名称` is not null then 1 else 0 end as `是否返修`
-FROM 
+FROM
 (
-    SELECT 
+    SELECT
         '${-1d_pt}' AS `分区字段`,
-        a.city_name AS `城市`, 
+        a.city_name AS `城市`,
         a.manager_marketing_name as `营销大区/大部`,
         a.manager_area_name as `业务区域/组`,
         a.bizcircle_name as `商圈`,
@@ -19,20 +19,20 @@ FROM
         a.service_order_supplier_code AS `供应商编码`,
         a.service_order_professional_ucid AS `服务者ucid`,
         a.service_order_professional_name AS `服务者姓名`,
-        a.house_resource_id AS `房源编码`, 
-        a.service_order_complete_time AS `完工时间`, 
-        CASE 
-            WHEN (a.examine_task_type = 3) OR (a.examine_task_type NOT IN (3,12) AND a.lease_status IN (-1,1)) 
-            THEN '检修'  
-            ELSE '租后维修' 
-        END AS `维修类型`, 
-        CASE WHEN a.order_no IS NOT NULL THEN CONCAT(c.product_code, '-', a.order_no) END AS `完工订单号+商品`, 
+        a.house_resource_id AS `房源编码`,
+        a.service_order_complete_time AS `完工时间`,
+        CASE
+            WHEN (a.examine_task_type = 3) OR (a.examine_task_type NOT IN (3,12) AND a.lease_status IN (-1,1))
+            THEN '检修'
+            ELSE '租后维修'
+        END AS `维修类型`,
+        CASE WHEN a.order_no IS NOT NULL THEN CONCAT(c.product_code, '-', a.order_no) END AS `完工订单号+商品`,
         CASE WHEN CONCAT(c.product_code, '-', a.order_no) IS NOT NULL THEN a.order_no END AS `完工订单号`,
         CASE WHEN CONCAT(c.product_code, '-', a.order_no) IS NOT NULL THEN c.product_name END AS `完工商品名称`,
         c.is_6_item,
         c.product_code
     FROM (
-        SELECT  
+        SELECT
             r1.city_name,
 	  r1.manager_marketing_name ,
   r1.manager_area_name,
@@ -40,7 +40,7 @@ FROM
    r1.resblock_name,
             r1.service_order_supplier_name,
             r1.service_order_complete_time,
-            r1.lease_status, 
+            r1.lease_status,
             r1.order_no,
             r1.service_order_code,
             r1.house_resource_id,
@@ -51,7 +51,7 @@ FROM
             r1.service_order_professional_name,
             r1.service_order_supplier_code
         FROM (
-            SELECT 
+            SELECT
                 a1.order_no,
                 a1.service_order_code,
                 a1.service_order_complete_time,
@@ -104,12 +104,12 @@ FROM
                 FROM rpt.rpt_fas_light_hosting_order_detail_da
                 WHERE pt = '${-1d_pt}'
                 AND vison_type = '4.0'
-                AND service_name IN ('维修','燃气')
-                AND order_type = '16'
                 AND label_group NOT IN ('8')
-                AND commodity_name_list1 != '漏水专项检修'
-                AND commodity_code_list1 != 'SCM00300001672373'
-                AND commodity_name_list1 NOT IN ('夏季空调预检','消防器材')
+                -- 筛选条件：只保留漏水和定损，如果同时包含算在定损上
+                AND (
+                    (commodity_name_list1 like '%漏水%' and commodity_name_list1 not like '%定损%') OR
+                    (commodity_name_list1 like '%定损%')
+                )
                 AND supplier_name NOT IN (
                     '上海兰宫建筑装饰有限公司',
                     '上海尚礼实业有限公司',
@@ -121,7 +121,7 @@ FROM
         ) r1
     ) a
     JOIN (
-        SELECT DISTINCT 
+        SELECT DISTINCT
             service_order_code,
             product_name,
             product_code,
@@ -131,13 +131,13 @@ FROM
     ) c ON a.service_order_code = c.service_order_code
     WHERE substr(a.service_order_complete_time,1,7)>='2025-05'
 ) a
-LEFT JOIN 
+LEFT JOIN
 (
-    SELECT 
+    SELECT
       n.`返修单号`,n.`关联单号`,n.`返修时间`,n.`返修商品`,n.`返修商品名称`
-    FROM 
+    FROM
     (
-        SELECT 
+        SELECT
             r.order_code AS `返修单号`,
             r.relate_order_code AS `关联单号`,
             r.order_create_date AS `返修时间`,
@@ -145,12 +145,12 @@ LEFT JOIN
             g.commodity_name AS `返修商品名称`,
             -- 新增：按关联单号分组，按返修时间倒序编号
             ROW_NUMBER() OVER(
-                PARTITION BY r.relate_order_code, g.commodity_name 
-                ORDER BY r.order_create_date 
+                PARTITION BY r.relate_order_code, g.commodity_name
+                ORDER BY r.order_create_date
             ) AS rn  -- 这个编号将用于取最近一次返修
-        FROM 
+        FROM
         (
-            SELECT 
+            SELECT
                 order_code,
                 relate_order_code,
                 order_create_date
@@ -159,9 +159,9 @@ LEFT JOIN
             AND relate_type = '1'
             AND del_status = '1'
         ) r
-        JOIN 
+        JOIN
         (
-            SELECT 
+            SELECT
                 order_no,
                 commodity_code,
                 commodity_name
@@ -172,12 +172,12 @@ LEFT JOIN
         ) g ON g.order_no = r.order_code
     ) n
     WHERE n.rn = 1  -- 只保留最近一次返修记录
-) b 
+) b
 ON a.`完工订单号` = b.`关联单号` AND a.`product_code` = b.`返修商品`
-left join 
- (select order_no,service_order_professional_name, service_order_professional_ucid,service_order_supplier_name 
- 
- FROM 
+left join
+ (select order_no,service_order_professional_name, service_order_professional_ucid,service_order_supplier_name
+
+ FROM
     olap.olap_hj_fas_main_order_service_info_da
     where pt='${-1d_pt}'
     AND order_type = 16

@@ -105,7 +105,11 @@ a.manager_area_name as `业务区域/组`,
 a.manager_marketing_name as `营销大区/大部`,
 case when label_group in ('1','25') then '检修' when label_group not in ('1','8','25') and lease_status IN ('2','3') then '租后维修' end as `维修类型`,
 case when d.service_order_code is not null then '是' else '否' end as `是否暂不维修`,
-d.reason as `暂不维修原因`
+d.reason as `暂不维修原因`,
+e.accept_status as `验收状态`,
+e.accept_reason as `验收不通过原因`,
+e.operate_type as `操作类型`,
+e.operate_name as `操作人姓名`
  from
    (SELECT  
     manager_marketing_name,
@@ -206,4 +210,15 @@ left join ( select service_order_code,concat_ws('；', collect_set(reason)) as r
            when reason_code =109 then '已确认物业处理' when reason_code =110 then '已确认资管自行处理'
            when reason_code =111 then '资管已确认不处理(可维修)' when reason_code =112 then '其他' end as reason from rpt.rpt_fas_jiafu_dispatch_service_order_product_da where pt='${-1d_pt}' and reason_code in (104,105,108,101,102,103,106,107,109,110,111,112) 
            ) as t1 group by service_order_code ) d on d.service_order_code = a.service_order_code
+left join (
+    select service_order_code,accept_status,accept_reason,operate_type,operate_name
+    from (
+        select service_order_code,accept_status,accept_reason,operate_type,operate_name,
+               row_number() over (partition by service_order_code order by operate_time desc) as rn
+        from ods.ods_plat_jiafu_dispatch_service_order_product_accept_log_da
+        where pt = '${-1d_pt}'
+        and operate_type in (3,4)
+    ) t
+    where rn = 1
+) e on e.service_order_code = a.service_order_code
 where    label_group NOT IN ('8');
