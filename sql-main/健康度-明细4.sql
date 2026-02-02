@@ -1,0 +1,134 @@
+SELECT
+    -- 维度信息
+    a.city_name,
+    a.bizcircle_name AS `商圈`,
+    
+    -- 计算统计月份 (原逻辑：订单完成时间 = 统计月-1，即 统计月 = 订单完成时间+1)
+    DATE_FORMAT(ADD_MONTHS(TO_DATE(a.service_order_complete_time), 1), 'yyyy-MM') AS month_string,
+    a.service_order_supplier_name AS `供应商`,
+    a.service_order_professional_ucid AS `服务者ucid`,
+    a.service_order_professional_name AS `服务者姓名`,
+    -- 订单与商品明细
+    a.zu_order AS `租务订单号`,
+    a.service_order_code AS `服务单号`,
+    a.service_order_complete_time AS `完工时间`,
+    d.product_name AS `商品名称`,
+    d.product_code AS `商品编码`,
+    
+    -- 标记字段
+    '1' AS `是否计入分母`, -- 能查出来的都是分母
+    CASE WHEN f.`返修单号` IS NOT NULL THEN '是' ELSE '否' END AS `是否返修(分子)`,
+    
+    -- 返修详情
+    f.`返修单号`,
+    f.`关联单号`,
+    f.`返修时间`,
+    f.`返修商品名称`
+
+FROM 
+    -- 主表 a：订单基础信息
+    (SELECT DISTINCT
+        order_no,
+        service_order_code,
+        service_order_complete_time,
+        lease_status,
+        label_group,
+        bizcircle_name,
+        service_order_supplier_name,
+        service_order_professional_ucid,
+        service_order_professional_name,
+        case when label_group not in ('1','8','25') then order_no end as zu_order,
+        case
+            when city_name = '北京市' and manager_marketing_name in ('京东事业部','京东南事业部','京东南租赁运营部','京东南运营','京东运营','京南事业部','京南大部','京南运营','京西南事业部','京西南运营') then '惠居京南'
+            when city_name = '北京市' and manager_marketing_name in ('京东北事业部','京东北客户业务部','京东北运营','京中事业部','京中客户业务部','京中运营','京北事业部','京北大部','京北客户业务部','京北运营','京西事业部','京西北事业部','京西北客户业务部','京西北运营','京西客户业务部','京西运营') then '惠居京北'
+            else city_name
+        end as city_name
+    FROM
+        olap.olap_hj_fas_main_order_service_info_da
+    WHERE pt = '20251228000000'
+        AND order_type = 16
+        AND label_group NOT IN ('8')
+    ) AS a
+
+    -- 关联表 b：过滤特定供应商和排除项
+    INNER JOIN (
+        SELECT
+            order_no as oth_orderno
+        FROM
+            rpt.rpt_fas_light_hosting_order_detail_da
+        WHERE pt = '20251228000000'
+            AND vison_type='4.0'
+            AND service_name in ('维修','燃气')
+            AND order_type='16'
+            AND label_group not in ('8')
+            AND commodity_name_list1 != '漏水专项检修'
+            AND commodity_name_list1 not in ('夏季空调预检','SCM00300001672373','漏水专项检修','消防器材','定损','漏水定损','火灾定损','其他定损','京北漏水定损','京南漏水定损','京北火灾定损','京南火灾定损','京北其他定损','京南其他定损')
+            AND supplier_name not in ('上海兰宫建筑装饰有限公司','上海尚礼实业有限公司','上海苏皖贸易有限公司','上海再旭保洁服务有限公司','源和里仁家具海安有限公司','匠云（北京）科技有限公司')
+        GROUP BY order_no
+    ) b ON b.oth_orderno = a.order_no
+
+    -- 关联表 d：筛选6项特定商品 (改为Inner Join，因为分子分母都要求是这些商品)
+    INNER JOIN ( 
+        SELECT DISTINCT
+            c.service_order_code,
+            c.product_name,
+            c.product_code
+        FROM
+            dw.dw_fas_jiafu_dispatch_service_order_product_da c
+        WHERE pt='20251228000000'
+            AND c.product_name rlike ('马桶|空调|洗手池|洗衣机|燃气灶|淋浴器|空 调|燃 气 灶|马 桶')
+    ) d ON d.service_order_code = a.service_order_code
+
+    -- 关联表 f：获取返修信息
+    LEFT JOIN (
+        SELECT
+            n.`返修单号`,
+            n.`关联单号`,
+            n.`返修时间`,
+            n.`返修商品`,
+            n.`返修商品名称`
+        FROM (
+            SELECT
+                r.order_code AS `返修单号`,
+                r.relate_order_code AS `关联单号`,
+                r.order_create_date AS `返修时间`,
+                g.commodity_code AS `返修商品`,
+                g.commodity_name AS `返修商品名称`,
+                ROW_NUMBER() OVER(
+                    PARTITION BY r.relate_order_code, g.commodity_name
+                    ORDER BY r.order_create_date
+                ) AS rn
+            FROM (
+                SELECT
+                    order_code,
+                    relate_order_code,
+                    order_create_date
+                FROM rpt.rpt_plat_beijia_transaction_trade_order_relate_info_di
+                WHERE pt >= '20251001000000' 
+                    AND relate_type = '1'
+                    AND del_status = '1'
+            ) r
+            JOIN (
+                SELECT
+                    order_no,
+                    commodity_code,
+                    commodity_name
+                FROM olap.olap_hj_fas_main_order_commodity_da
+                WHERE pt = '20251228000000'
+                    AND commodity_type = 1
+                    AND commodity_name RLIKE ('马桶|空调|洗手池|洗衣机|燃气灶|淋浴器|空 调|燃 气 灶|马 桶')
+                    AND (NVL(fault_list,'') NOT LIKE '%安装%' AND NVL(fault_desc,'') NOT LIKE '%安装%')
+            ) g ON g.order_no = r.order_code
+        ) n
+        WHERE n.rn = 1
+    ) f ON a.order_no = f.`关联单号` AND d.product_code = f.`返修商品`
+
+WHERE 
+    -- 1. 租约状态筛选
+    a.lease_status IN (2, 3)
+    -- 2. 时间范围筛选：统计月份在 2025-06 到 2026-01 之间
+    -- 逻辑：完工时间往后推一个月即为统计月
+    AND DATE_FORMAT(ADD_MONTHS(TO_DATE(a.service_order_complete_time), 1), 'yyyy-MM') >= '2025-10-01'
+    -- 3. 限制城市范围 (原逻辑 numbers 的城市列表)
+    AND a.city_name IN ('上海市', '天津市', '成都市', '杭州市', '苏州市', '宁波市', '深圳市', '济南市', '广州市', '西安市', '武汉市', '南京市','惠居京北','惠居京南')
+

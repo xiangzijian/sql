@@ -1,0 +1,200 @@
+-- 模板查询：及时完工率-检修（增加商圈维度）
+-- 模板查询：检修出租前完工率统计
+-- 统计范围：2025年6月-2026年1月，按城市、商圈、月份
+-- 分母：全量检修单
+-- 分子：检修完工时间在下单时间48h内 或 检修完工时间在下单时间49小时-7天内且该时间段内房源无出租的订单
+
+WITH 
+-- 1. 生成月份和城市的笛卡尔积
+numbers AS (
+    SELECT
+        CASE 
+            WHEN n <= 12 THEN CONCAT('2025', '-', LPAD(n, 2, '0'))
+            ELSE CONCAT('2026', '-', LPAD(n - 12, 2, '0'))
+        END AS month_string,
+        city_name
+    FROM
+        (SELECT n, city_name
+         FROM
+           (SELECT stack(8, 6, 7, 8, 9, 10, 11, 12, 13) AS n) t1  -- 6-12对应2025年6-12月, 13对应2026年1月
+         LATERAL VIEW EXPLODE(
+           ARRAY('上海市', '天津市', '成都市', '杭州市', '苏州市', '宁波市', '深圳市', '济南市', '广州市', '西安市', '武汉市', '南京市','北京市')
+         ) t2 AS city_name
+        ) t
+),
+
+-- 2. 获取房源的出租记录（起租日期）
+house_lease_info AS (
+    SELECT DISTINCT
+        house_code,
+        effective_start_date AS lease_start_date  -- 合同起租日
+    FROM rpt.rpt_plat_manager_workbench_manager_task_da
+    WHERE pt = CONCAT(DATE_FORMAT(DATE_SUB(CURRENT_DATE(), 1), 'yyyyMMdd'), '000000')  -- 昨天的分区
+        AND effective_start_date IS NOT NULL
+        AND effective_start_date != '1000-01-01 00:00:00'
+        AND SUBSTR(effective_start_date, 1, 4) >= '2000'
+),
+
+-- 3. 主订单数据：检修单及完工信息
+main_order_data AS (
+    SELECT 
+        a.order_no,
+        a.city_code,
+        a.city_name,
+        a.bizcircle_name,
+        a.order_create_time,
+        SUBSTR(a.order_create_time, 1, 7) AS order_month,
+        a.service_order_complete_time,
+        a.house_resource_id,
+        
+        -- 计算下单到完工的小时数
+        CASE 
+            WHEN a.service_order_complete_time IS NOT NULL 
+                AND SUBSTR(a.service_order_complete_time, 1, 4) NOT IN ('1990', '2050', '1000')
+            THEN (UNIX_TIMESTAMP(a.service_order_complete_time, 'yyyy-MM-dd HH:mm:ss') 
+                  - UNIX_TIMESTAMP(a.order_create_time, 'yyyy-MM-dd HH:mm:ss')) / 3600
+            ELSE NULL
+        END AS complete_hours,
+        
+        -- 判断是否48小时内完工
+        CASE 
+            WHEN a.service_order_complete_time IS NOT NULL 
+                AND SUBSTR(a.service_order_complete_time, 1, 4) NOT IN ('1990', '2050', '1000')
+                AND (UNIX_TIMESTAMP(a.service_order_complete_time, 'yyyy-MM-dd HH:mm:ss') 
+                     - UNIX_TIMESTAMP(a.order_create_time, 'yyyy-MM-dd HH:mm:ss')) / 3600 <= 48
+            THEN 1
+            ELSE 0
+        END AS is_complete_within_48h,
+        
+        -- 判断是否在49小时-7天内完工
+        CASE 
+            WHEN a.service_order_complete_time IS NOT NULL 
+                AND SUBSTR(a.service_order_complete_time, 1, 4) NOT IN ('1990', '2050', '1000')
+                AND (UNIX_TIMESTAMP(a.service_order_complete_time, 'yyyy-MM-dd HH:mm:ss') 
+                     - UNIX_TIMESTAMP(a.order_create_time, 'yyyy-MM-dd HH:mm:ss')) / 3600 > 48
+                AND (UNIX_TIMESTAMP(a.service_order_complete_time, 'yyyy-MM-dd HH:mm:ss') 
+                     - UNIX_TIMESTAMP(a.order_create_time, 'yyyy-MM-dd HH:mm:ss')) / 3600 <= 168  -- 7天=168小时
+            THEN 1
+            ELSE 0
+        END AS is_complete_49h_to_7d
+        
+    FROM olap.olap_hj_fas_main_order_service_info_da a
+    INNER JOIN (
+        SELECT 
+            order_no,
+            commodity_name_list1,
+            supplier_name
+        FROM rpt.rpt_fas_light_hosting_order_detail_da
+        WHERE pt = CONCAT(DATE_FORMAT(DATE_SUB(CURRENT_DATE(), 1), 'yyyyMMdd'), '000000')  -- 昨天的分区
+            AND vison_type = '4.0'
+            AND service_name IN ('维修', '燃气')
+            AND order_type = '16'
+            AND label_group NOT IN ('8')
+            AND commodity_name_list1 NOT IN (
+                '夏季空调预检', 'SCM00300001672373', '漏水专项检修','消防器材', '定损', '漏水定损','火灾定损','其他定损', 
+                '京北漏水定损', '京南漏水定损','京北火灾定损', '京南火灾定损',
+                '京北其他定损', '京南其他定损')
+            AND supplier_name NOT IN (
+                '上海兰宫建筑装饰有限公司',
+                '上海尚礼实业有限公司',
+                '上海苏皖贸易有限公司',
+                '上海再旭保洁服务有限公司',
+                '源和里仁家具海安有限公司',
+                '匠云（北京）科技有限公司'
+            )
+    ) c ON c.order_no = a.order_no
+    WHERE a.pt = CONCAT(DATE_FORMAT(DATE_SUB(CURRENT_DATE(), 1), 'yyyyMMdd'), '000000')  -- 昨天的分区
+        AND a.order_create_time >= '2025-06-01 00:00:00'  -- 2025年6月开始
+        AND a.order_create_time < '2026-02-01 00:00:00'  -- 2026年1月结束
+        AND a.order_type = 16  -- 租后维修单
+        AND (a.label_group IN ('1', '25') OR a.lease_status IN ('-1', '1'))
+),
+
+-- 4. 关联房源出租信息，判断49小时-7天内是否有出租
+order_with_lease_check AS (
+    SELECT 
+        m.*,
+        -- 检查在下单后49小时到完工期间，是否有起租记录
+        CASE 
+            WHEN m.is_complete_49h_to_7d = 1 THEN
+                CASE 
+                    WHEN MAX(CASE 
+                        WHEN h.lease_start_date IS NOT NULL
+                            -- 起租日期在下单后49小时之后，且在完工时间之前
+                            AND UNIX_TIMESTAMP(h.lease_start_date, 'yyyy-MM-dd HH:mm:ss') 
+                                >= UNIX_TIMESTAMP(m.order_create_time, 'yyyy-MM-dd HH:mm:ss') + 49 * 3600
+                            AND UNIX_TIMESTAMP(h.lease_start_date, 'yyyy-MM-dd HH:mm:ss') 
+                                <= UNIX_TIMESTAMP(m.service_order_complete_time, 'yyyy-MM-dd HH:mm:ss')
+                        THEN 1 
+                        ELSE 0 
+                    END) = 0 
+                    THEN 1  -- 期间无出租
+                    ELSE 0  -- 期间有出租
+                END
+            ELSE 0
+        END AS is_no_lease_in_period
+        
+    FROM main_order_data m
+    LEFT JOIN house_lease_info h 
+        ON m.house_resource_id = h.house_code
+    GROUP BY 
+        m.order_no, m.city_code, m.city_name, m.bizcircle_name, 
+        m.order_create_time, m.order_month, m.service_order_complete_time,
+        m.house_resource_id, m.complete_hours, m.is_complete_within_48h, m.is_complete_49h_to_7d
+)
+
+-- 5. 最终统计结果
+SELECT 
+    numbers.city_name AS `城市`,
+    o.bizcircle_name AS `商圈`,
+    numbers.month_string AS `月份`,
+    
+    -- 分母：全量检修单
+    COUNT(DISTINCT CASE 
+        WHEN o.order_month = numbers.month_string 
+        THEN o.order_no 
+    END) AS `全量检修单数`,
+    
+    -- 分子1：48小时内完工
+    COUNT(DISTINCT CASE 
+        WHEN o.order_month = numbers.month_string 
+            AND o.is_complete_within_48h = 1
+        THEN o.order_no 
+    END) AS `48h内完工数`,
+    
+    -- 分子2：49小时-7天内完工且期间无出租
+    COUNT(DISTINCT CASE 
+        WHEN o.order_month = numbers.month_string 
+            AND o.is_complete_49h_to_7d = 1
+            AND o.is_no_lease_in_period = 1
+        THEN o.order_no 
+    END) AS `49h-7天内完工且无出租数`,
+    
+    -- 总分子：48h内完工 + 49h-7天内完工且无出租
+    COUNT(DISTINCT CASE 
+        WHEN o.order_month = numbers.month_string 
+            AND (o.is_complete_within_48h = 1 OR o.is_no_lease_in_period = 1)
+        THEN o.order_no 
+    END) AS `出租前完工总数`,
+    
+    -- 出租前完工率
+    CONCAT(
+        ROUND(
+            CASE 
+                WHEN COUNT(DISTINCT CASE WHEN o.order_month = numbers.month_string THEN o.order_no END) = 0 
+                THEN 0
+                ELSE COUNT(DISTINCT CASE 
+                    WHEN o.order_month = numbers.month_string 
+                        AND (o.is_complete_within_48h = 1 OR o.is_no_lease_in_period = 1)
+                    THEN o.order_no 
+                END) * 100.0 / COUNT(DISTINCT CASE WHEN o.order_month = numbers.month_string THEN o.order_no END)
+            END, 
+        2), '%'
+    ) AS `出租前完工率`
+    
+FROM numbers
+LEFT JOIN order_with_lease_check o 
+    ON numbers.city_name = o.city_name
+GROUP BY numbers.city_name, o.bizcircle_name, numbers.month_string
+HAVING COUNT(DISTINCT CASE WHEN o.order_month = numbers.month_string THEN o.order_no END) > 0  -- 只显示有数据的城市商圈月份
+ORDER BY numbers.city_name, o.bizcircle_name, numbers.month_string

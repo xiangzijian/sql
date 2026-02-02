@@ -1,0 +1,189 @@
+
+
+## 表基本信息
+
+- **数据库名**: `olap`
+- **表名**: `olap_fas_mht_staff_detail_da`
+- **表中文名**: 家服供应商员工
+- **表说明**: 家服供应商员工
+- **更新日期**: 2026-01-13
+
+---
+
+
+
+
+
+
+
+序号	字段名称	参照表及字段	字段中文名	描述	枚举值	数据类型	是否加密	安全级别	单位	是否可空	默认值	是否主键	是否分区字段
+1	staff_code		
+员工编码
+string	否	C2		可空		否	否
+2	staff_id		
+员工_id
+bigint	否	C2		可空		否	否
+3	staff_ucid		
+员工ucid
+bigint	否	C2		可空		否	否
+4	staff_system_no		
+员工系统号
+bigint	否	C2		可空		否	否
+5	name		
+姓名
+string	否	C2		可空		否	否
+6	sex		
+性别
+0:女,1 :男,2:其他
+bigint	否	C2		可空		否	否
+7	birthday		
+出生日期
+string	否	C2		可空		否	否
+8	nation		
+民族
+string	否	C2		可空		否	否
+9	married		
+婚姻
+0:未婚,1:已婚
+bigint	否	C2		可空		否	否
+10	id_type		
+id类型
+bigint	否	C2		可空		否	否
+11	id_no		
+id号
+string	否	C2		可空		否	否
+12	home_address		
+家庭地址
+string	是	C2		可空		否	否
+13	anmelden_type		
+户籍类型
+1:本市城镇,2:本市农村,3:外埠城镇,4:外埠农村
+bigint	否	C2		可空		否	否
+14	anmelden_address		
+户籍地址
+string	否	C2		可空		否	否
+15	phone		
+手机号
+string	否	C2		可空		否	否
+16	phone_encrypt		
+手机号加密
+string	否	C2		可空		否	否
+17	email		
+邮箱
+string	否	C2		可空		否	否
+18	country		
+国家
+string	否	C2		可空		否	否
+19	province_code		
+省编码
+bigint	否	C2		可空		否	否
+20	city_code		
+城市编码
+bigint	否	C2		可空		否	否
+21	city_name		
+城市名称
+string	否	C2		可空		否	否
+22	source		
+来源
+1:供应商人员,2:平台人员
+bigint	否	C2		可空		否	否
+23	logout_time		
+注销时间
+string	否	C2		可空		否	否
+24	update_ucid		
+更新ucid
+bigint	否	C2		可空		否	否
+25	update_time		
+更新时间
+string	否	C2		可空		否	否
+26	status_code		
+状态编码
+0:启用,1:停用,2:注销,3:组织已删除
+bigint	否	C2		可空		否	否
+27	is_delete		
+是否删除
+0:未删除,1:已删除
+bigint	否	C2		可空		否	否
+28	is_valid		
+是否有效
+结合状态与is_delete字段加工而来
+1:有效,0:无效
+bigint	否	C2		可空		否	否
+29	role_status		
+角色状态
+bigint	否	C2		可空		否	否
+30	supplier_org_code		
+废弃
+string	否	C2		可空		否	否
+31	create_time		
+创建时间
+string	否	C2		可空		否	否
+32	modifier_name		
+修改人名称
+string	否	C2		可空		否	否
+33	coordinate		
+居住坐标
+string	否	C2		可空		否	否
+34	staff_picture		
+员工图片
+string	否	C2		可空		否	否
+35	is_have_car		
+是否有车
+bigint	否	C2		可空		否	否
+36	move_type		
+搬家类型
+string	否	C2		可空		否	否
+37	service_start_time		
+服务开始时间
+string	否	C2		可空		否	否
+38	entry_time		
+入职时间
+string	否	C2		可空		否	否
+39	is_fulltime		
+是否全职
+bigint	否	C2		可空		否	否
+40	work_period		
+工作年限
+bigint	否	C2		可空		否	否
+41	biz_line		
+业务线
+10002:保洁,10003:维修
+bigint	否	C2		可空		否	否
+42	service_biz_circle_cnt		
+服务商圈统计量
+bigint	否	C2		可空		否	否
+43	ability_cnt		
+技能统计量
+bigint	否	C2		可空		否	否
+44	supplier_id		
+供应商_id
+-911:无所属供应商
+bigint	否	C2		可空		否	否
+45	supplier_name		
+供应商名称
+string	否	C2		可空		否	否
+46	org_code_list		
+组织编码列表
+string	否	C2		可空		否	否
+47	pt		
+分区字段
+string	否	C2		可空		否	是
+48	service_biz_circle_list		
+服务商圈列表
+string	否	C2		可空		否	否
+49	ability_list		
+技能列表
+string	否	C2		可空		否	否
+50	worker_id		
+服务工人ID-作废
+2.0 订单表的 work_id
+bigint	否	C2		可空		否	否
+51	role_list		
+角色列表
+string	否	C2		可空		否	否
+52	biz_line_name		
+业务线名称
+string	否	C2		可空		否	否
+53	supplier_code		
+供应商编码
+string	否	C2		可空		否	否
