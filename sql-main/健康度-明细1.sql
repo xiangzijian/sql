@@ -163,12 +163,6 @@ SELECT DISTINCT
                 WHEN (SUBSTR(a.cancel_time, 12, 2) >= '21' AND SUBSTR(a.cancel_time, 12, 2) <= '23')
                      OR (SUBSTR(a.cancel_time, 12, 2) >= '00' AND SUBSTR(a.cancel_time, 12, 2) < '09')
                 THEN '是'
-                -- 白天致电前取消
-                WHEN (a.first_call_time IS NULL 
-                      OR a.first_call_time = '1000-01-01 00:00:00' 
-                      OR SUBSTR(a.first_call_time, 1, 4) < '2000')
-                     OR (SUBSTR(a.first_call_time, 1, 4) >= '2000' AND a.cancel_time < a.first_call_time)
-                THEN '是'
                 -- 紧急单30分钟内取消
                 WHEN a.performance_mode IN (1)
                      AND (UNIX_TIMESTAMP(a.cancel_time, 'yyyy-MM-dd HH:mm:ss')
