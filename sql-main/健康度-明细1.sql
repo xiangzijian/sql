@@ -1,16 +1,9 @@
--- 26年健康度明细SQL
--- 说明：基于26年健康度汇总统计.sql，生成订单明细数据
--- 变更：1. 去掉门锁过滤(不排除label_group='8') 2. 保留漏水和定损订单 3. 按订单创建时间分月份
--- 数据范围：上海市 2025年12月
--- 分区：pt='20260128000000'
-
-
 WITH  house_lease_info AS (
     SELECT 
         house_code,
         max(effective_start_date)  AS lease_start_date  -- 合同起租日
     FROM rpt.rpt_plat_manager_workbench_manager_task_da
-    WHERE pt = '20260128000000'  
+    WHERE pt = '${-1d_pt}'  
         AND effective_start_date IS NOT NULL
         AND effective_start_date != '1000-01-01 00:00:00'
         AND SUBSTR(effective_start_date, 1, 7) >= '2025-05' 
@@ -28,7 +21,7 @@ ticket_data AS (
         ticket_status,
         question_desc
     FROM rpt.rpt_trusteeship_private_fuwu_houseout_renter_da 
-    WHERE pt = '20260128000000'
+    WHERE pt = '${-1d_pt}'
         AND parent_name = '维修'  -- 一级分类为维修
         AND ticket_status NOT IN (5, 6)  -- 排除无效单和重复单
         AND three_current_name NOT IN (
@@ -39,7 +32,7 @@ ticket_data AS (
             '下单流程咨询',
             '服务范围内收费'
         )  -- 剔除不相关的三级分类
-        AND ctime >= '2025-05-01 00:00:00'
+        AND ctime >= '2025-11-01 00:00:00'
         AND ctime < '2027-01-01 00:00:00'
 ),
 
@@ -49,7 +42,7 @@ relation_data AS (
         ticket_id,
         repair_order
     FROM ods.ods_plat_private_domain_ticket_repair_order_relation_da
-    WHERE pt = '20260128000000'
+    WHERE pt = '${-1d_pt}'
         AND repair_order IS NOT NULL
         AND ticket_id IS NOT NULL
 ),
@@ -70,7 +63,7 @@ order_commodity_info AS (
         order_no,
         -- 判断订单分类：定损类、漏水类、其他
         CASE 
-            WHEN MAX(CASE WHEN commodity_name IN (
+            WHEN MAX(CASE WHEN commodity_name IN ('夏季空调预检',
                 '定损', '漏水定损', '火灾定损', '其他定损',
                 '京北漏水定损', '京南漏水定损', '京北火灾定损', '京南火灾定损',
                 '京北其他定损', '京南其他定损'
@@ -81,10 +74,13 @@ order_commodity_info AS (
             ELSE '其他'
         END AS order_category
     FROM olap.olap_hj_fas_main_order_commodity_da
-    WHERE pt = '20260128000000'
+    WHERE pt = '${-1d_pt}'
         AND commodity_type = 1  -- 下单商品
     GROUP BY order_no
 )
+
+insert overwrite table rpt.rpt_on_time_rate partition (pt='${-1d_pt}')
+
 
 SELECT DISTINCT
     -- 1. 考核月份
@@ -116,11 +112,10 @@ SELECT DISTINCT
 
     -- 10.房源id
     a.house_resource_id,
-    a.service_end_time as `预约结束时间`,
     
     -- 10. 紧急单/普通单
     CASE 
-        WHEN a.performance_mode IN (1) THEN '紧急单'
+        WHEN a.performance_mode=1 THEN '紧急单'
         ELSE '普通单'
     END AS `紧急单/普通单`,
     -- 11.完工时间
@@ -163,13 +158,19 @@ SELECT DISTINCT
                 WHEN (SUBSTR(a.cancel_time, 12, 2) >= '21' AND SUBSTR(a.cancel_time, 12, 2) <= '23')
                      OR (SUBSTR(a.cancel_time, 12, 2) >= '00' AND SUBSTR(a.cancel_time, 12, 2) < '09')
                 THEN '是'
+                -- 白天致电前取消
+                WHEN (a.first_call_time IS NULL 
+                      OR a.first_call_time = '1000-01-01 00:00:00' 
+                      OR SUBSTR(a.first_call_time, 1, 4) < '2000')
+                     OR (SUBSTR(a.first_call_time, 1, 4) >= '2000' AND a.cancel_time < a.first_call_time)
+                THEN '是'
                 -- 紧急单30分钟内取消
-                WHEN a.performance_mode IN (1)
+                WHEN a.performance_mode =1
                      AND (UNIX_TIMESTAMP(a.cancel_time, 'yyyy-MM-dd HH:mm:ss')
                           - UNIX_TIMESTAMP(a.order_create_time, 'yyyy-MM-dd HH:mm:ss')) / 60 <= 30
                 THEN '是'
                 -- 普通单1小时内取消
-                WHEN (a.performance_mode ! = 1)
+                WHEN (a.performance_mode!=1)
                      AND (UNIX_TIMESTAMP(a.cancel_time, 'yyyy-MM-dd HH:mm:ss')
                           - UNIX_TIMESTAMP(a.order_create_time, 'yyyy-MM-dd HH:mm:ss')) / 60 <= 60
                 THEN '是'
@@ -239,12 +240,21 @@ SELECT DISTINCT
              AND (UNIX_TIMESTAMP(a.first_call_time, 'yyyy-MM-dd HH:mm:ss')
                   - UNIX_TIMESTAMP(a.order_create_time, 'yyyy-MM-dd HH:mm:ss')) / 60 <= 60
         THEN '是'
+        --夜间逻辑
+        WHEN substr(a.order_create_time, 12, 2) >= '21'
+             AND a.first_call_time < concat(date_add(to_date(a.order_create_time), 1), ' 10:00:00')
+             AND substr(a.first_call_time, 1, 4) >= '2000'
+        THEN '是'
+        WHEN substr(a.order_create_time, 12, 2) < '09'
+             AND a.first_call_time < concat(to_date(a.order_create_time), ' 10:00:00')
+             AND substr(a.first_call_time, 1, 4) >= '2000'
+         THEN '是'
         ELSE '否'
     END AS `是否1小时内致电`,
     
     -- 19. 普通单及时上门考核时间（客户下单首次预约结束时间或未致电客户改约时间）
     CASE 
-        WHEN a.performance_mode != 1 THEN
+        WHEN a.performance_mode!=1 THEN
             CASE 
                 -- 优先使用预约服务结束时间
                 WHEN a.service_end_time IS NOT NULL 
@@ -305,19 +315,9 @@ SELECT DISTINCT
     END AS `普通单上门时间`,
     
     -- 23. 普通单是否及时上门（首次签到时间小于考核时间的就是是）
-    case 
-    WHEN a.performance_mode != 1
-         AND a.first_sign_time IS NOT NULL 
-         AND a.first_sign_time != '1000-01-01 00:00:00'
-         AND SUBSTR(a.first_sign_time, 1, 4) >= '2000'
-         and a.service_end_time IS NOT NULL
-        AND a.first_sign_time <= a.service_end_time
-    THEN '是'
-    ELSE '否'
-    END AS `普通单是否及时上门`,
     CASE 
     -- 先剔除：如果是“普通单”且满足“未联系就取消”的条件，直接判为 NULL
-    WHEN a.performance_mode != 1
+    WHEN a.performance_mode!= 1
          AND a.order_status = 50 
          AND a.cancel_time != '1000-01-01 00:00:00'
          AND (
@@ -327,8 +327,16 @@ SELECT DISTINCT
              -- 或者 取消时间 < 联系时间
              (SUBSTR(a.first_call_time, 1, 4) >= '2000' AND a.cancel_time < a.first_call_time)
          )
-    THEN '不计入' -- 
-    else null end as `普通单上门是否剔除`,
+    THEN NULL -- 这里的 NULL 表示剔除，不计入分子分母
+    WHEN a.performance_mode != 1
+         AND a.first_sign_time IS NOT NULL 
+         AND a.first_sign_time != '1000-01-01 00:00:00'
+         AND SUBSTR(a.first_sign_time, 1, 4) >= '2000'
+         and a.service_end_time IS NOT NULL
+        AND a.first_sign_time <= a.service_end_time
+    THEN '是'
+    ELSE NULL
+    END AS `普通单是否及时上门`,
     
     -- 24. 紧急单考核时间（紧急单的创建时间）
     CASE 
@@ -356,11 +364,10 @@ SELECT DISTINCT
     CASE 
         WHEN consult_ticket.ticket_id IS NOT NULL THEN '是'
         ELSE '否'
-    END AS `是否维修咨询订单`
+    END AS `是否维修咨询订单`,
+    a.service_end_time as `预约结束时间`
 
 FROM olap.olap_hj_fas_main_order_service_info_da a
-
-
 
 -- 关联订单商品信息（用于判断订单分类）
 LEFT JOIN order_commodity_info oci
@@ -372,15 +379,15 @@ LEFT JOIN relation_expanded consult_relation
 LEFT JOIN ticket_data consult_ticket
     ON consult_relation.ticket_id = consult_ticket.ticket_id
 LEFT JOIN house_lease_info house on a.house_resource_id=house.house_code
-WHERE a.pt = '20260128000000'
+WHERE a.pt = '${-1d_pt}'
     AND a.order_type = 16  -- 维修订单
-    AND SUBSTR(a.order_create_time, 1, 7) >= '2025-05'  -- 限定12月份
-    AND a.city_name = '上海市'  -- 限定上海市
     AND a.label_group != '8'  -- 剔除门锁订单
-
-ORDER BY 
-    `创建月份`,
-    `订单创建时间`,
-    `城市`,
-    `供应商`,
-    `服务者`
+    AND a.vison_type = '4.0'
+    AND a.supplier_name NOT IN (
+            '上海兰宫建筑装饰有限公司',
+            '上海尚礼实业有限公司',
+            '上海苏皖贸易有限公司',
+            '上海再旭保洁服务有限公司',
+            '源和里仁家具海安有限公司',
+            '匠云（北京）科技有限公司'
+        )
