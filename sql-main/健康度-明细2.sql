@@ -1,9 +1,11 @@
---模板查询：6-12月城市维度运力满足率
+insert overwrite table rpt.rpt_delivery_capacity partition (pt='${-1d_pt}')
+
 SELECT 
     SUBSTR(a.create_time, 1, 7) AS `创建月份`,
-    SUBSTR(a.create_time, 1, 10) AS `数据日期`
+	SUBSTR(a.create_time, 1, 10) AS `数据日期`,
     a.city_name AS `城市名称`,
     a.biz_circle_name as `商圈`,
+	a.supplier_name as `供应商`,
 	CASE 
         WHEN a.commodity_code IN (
             'CM00300000048611', 'CM00300000035381', 'CM00300000031856', 'CM00300000015322', 
@@ -12,7 +14,7 @@ SELECT
             'CM00300000017957', 'CM00300000014849', 'CM00300000009439', 'CM00300002378666', 
             'CM00300000471848', 'CM00300002379296', 'CM00300000128429', 'CM00300000044135', 
             'CM00300000041205', 'CM00300000032923', 'CM00300000029123', 'CM00300000016932', 
-            'CM00300000012090', 'CM00300000478370', 'CM00300001070862', 'CM00300000474070'
+            'CM00300000012090', 'CM00300000478370', 'CM00300001070862', 'CM00300000474070', 'CM00300002545959', 'CM00300000046464'
         ) THEN '维修综合'
         WHEN a.commodity_code IN (
             'CM00300000480465', 'CM00300000043776', 'CM00300000028473', 'CM00300000018922', 
@@ -22,46 +24,19 @@ SELECT
     END AS `维修类型`,
     COUNT(DISTINCT CONCAT(a.city_code, '_', a.biz_circle_id, '_', a.house_code, '_', a.operator_uc_id, '_', a.operate_source, '_', a.create_time)) AS `总请求数`,
     COUNT(DISTINCT CASE WHEN a.valid = 1 AND a.target_date = TO_DATE(a.create_time) THEN CONCAT(a.city_code, '_', a.biz_circle_id, '_', a.house_code, '_', a.operator_uc_id, '_', a.operate_source, '_', a.create_time) END) AS `当日有运力`,
-    COUNT(DISTINCT CASE WHEN a.valid = 1 AND (a.target_date = TO_DATE(a.create_time) OR a.target_date = DATE_ADD(TO_DATE(a.create_time), 1)) THEN CONCAT(a.city_code, '_', a.biz_circle_id, '_', a.house_code, '_', a.operator_uc_id, '_', a.operate_source, '_', a.create_time) END) AS `2日内有运力`,
- CONCAT(
-  ROUND(
-    CASE 
-      WHEN COUNT(DISTINCT CONCAT(a.city_code, '_', a.biz_circle_id, '_', a.house_code, '_', a.operator_uc_id, '_', a.operate_source, '_', a.create_time)) = 0 
-      THEN 0
-      ELSE 
-        COUNT(DISTINCT CASE 
-          WHEN a.valid = 1 AND a.target_date = TO_DATE(a.create_time) 
-          THEN CONCAT(a.city_code, '_', a.biz_circle_id, '_', a.house_code, '_', a.operator_uc_id, '_', a.operate_source, '_', a.create_time) 
-        END) * 100.0 /
-        COUNT(DISTINCT CONCAT(a.city_code, '_', a.biz_circle_id, '_', a.house_code, '_', a.operator_uc_id, '_', a.operate_source, '_', a.create_time))
-    END,
-  2), '%') AS `当日运力满足率`,
-
-CONCAT(
-  ROUND(
-    CASE 
-      WHEN COUNT(DISTINCT CONCAT(a.city_code, '_', a.biz_circle_id, '_', a.house_code, '_', a.operator_uc_id, '_', a.operate_source, '_', a.create_time)) = 0 
-      THEN 0
-      ELSE 
-        COUNT(DISTINCT CASE 
-          WHEN a.valid = 1 AND (a.target_date = TO_DATE(a.create_time) OR a.target_date = DATE_ADD(TO_DATE(a.create_time), 1)) 
-          THEN CONCAT(a.city_code, '_', a.biz_circle_id, '_', a.house_code, '_', a.operator_uc_id, '_', a.operate_source, '_', a.create_time) 
-        END) * 100.0 /
-        COUNT(DISTINCT CONCAT(a.city_code, '_', a.biz_circle_id, '_', a.house_code, '_', a.operator_uc_id, '_', a.operate_source, '_', a.create_time))
-    END,
-  2), '%') AS `2日内运力满足率`
-
+    COUNT(DISTINCT CASE WHEN a.valid = 1 AND (a.target_date = TO_DATE(a.create_time) OR a.target_date = DATE_ADD(TO_DATE(a.create_time), 1)) THEN CONCAT(a.city_code, '_', a.biz_circle_id, '_', a.house_code, '_', a.operator_uc_id, '_', a.operate_source, '_', a.create_time) END) AS `2日内有运力`
+ 
 FROM ods.ods_plat_jiafu_dispatch_capacity_dispatch_stream_log_ha a
 LEFT JOIN olap.olap_trusteeship_hdel_delivery_examine_task_da b
     ON a.house_code = b.trusteeship_housedel_code 
-    AND b.pt='20260111000000'
-WHERE a.pt = '20260111000000'
+    AND b.pt='${-1d_pt}'
+WHERE a.pt = '${-1d_pt}'
     AND a.need_check = 1
 	and b.manager_corp_name LIKE '%惠居%'
     AND a.valid != -1
     AND a.city_code != '666666'
     AND a.service_code = 10003
-	AND create_time >='2025-10-01'
+	AND create_time >='2025-06-01'
     AND a.commodity_code IN (
         'CM00300000480465', 'CM00300000128429', 
         'CM00300000048611', 'CM00300000045028', 'CM00300000044135', 
@@ -75,9 +50,9 @@ WHERE a.pt = '20260111000000'
         'CM00300000224171', 'CM00300002378666', 'CM00300000478370', 
         'CM00300001615920', 'CM00300000471848', 'CM00300001070862', 
         'CM00300000472146', 'CM00300002379296', 'CM00300000474070', 
-        'CM00300000046464'
+        'CM00300000046464', 'CM00300002545959'
     )
-GROUP BY SUBSTR(a.create_time, 1, 7), SUBSTR(a.create_time, 1, 10), a.city_name,a.biz_circle_name,
+GROUP BY SUBSTR(a.create_time, 1, 7), SUBSTR(a.create_time, 1, 10), a.city_name,a.biz_circle_name,a.supplier_name,
 CASE 
         WHEN a.commodity_code IN (
             'CM00300000048611', 'CM00300000035381', 'CM00300000031856', 'CM00300000015322', 
@@ -86,7 +61,7 @@ CASE
             'CM00300000017957', 'CM00300000014849', 'CM00300000009439', 'CM00300002378666', 
             'CM00300000471848', 'CM00300002379296', 'CM00300000128429', 'CM00300000044135', 
             'CM00300000041205', 'CM00300000032923', 'CM00300000029123', 'CM00300000016932', 
-            'CM00300000012090', 'CM00300000478370', 'CM00300001070862', 'CM00300000474070'
+            'CM00300000012090', 'CM00300000478370', 'CM00300001070862', 'CM00300000474070', 'CM00300002545959', 'CM00300000046464'
         ) THEN '维修综合'
         WHEN a.commodity_code IN (
             'CM00300000480465', 'CM00300000043776', 'CM00300000028473', 'CM00300000018922', 

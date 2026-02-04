@@ -36,8 +36,7 @@ t3_agg AS (
         SUBSTR(service_end_time, 1, 7) as end_month, 
         city_name, 
         service_order_supplier_name,
-        count(distinct case when label_group12 = '检修' and ((unix_timestamp(service_order_complete_time) - unix_timestamp(order_create_time))/3600.0 <= 48
-         or ((unix_timestamp(service_order_complete_time) - unix_timestamp(order_create_time))/3600.0 <= 7*24 and service_order_complete_time < lease_start_date )) then order_no end) as `检修完工分子`,
+        count(distinct case when label_group12 = '检修' and ((unix_timestamp(service_order_complete_time) - unix_timestamp(order_create_time))/3600.0 <= 48 or ((unix_timestamp(service_order_complete_time) - unix_timestamp(order_create_time))/3600.0 <= 7*24 and service_order_complete_time < lease_start_date )) then order_no end) as `检修完工分子`,
         count(distinct case when label_group12 = '检修' then order_no end) as `检修完工分母`,
         count(distinct case when label_group12 = '租后维修' and order_category='其他' and cancel_call_time ='否' and (unix_timestamp(service_order_complete_time) - unix_timestamp(end_time)) /3600.0 <=24 then order_no end) as `租后完工分子`,
         count(distinct case when label_group12 = '租后维修' and  cancel_call_time ='否' and order_category='其他' then order_no end) as `租后完工分母`

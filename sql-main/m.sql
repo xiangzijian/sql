@@ -30,50 +30,7 @@ house_lease_info AS (
         AND SUBSTR(effective_start_date, 1, 7) >= '2025-05' 
         group by house_code
 ),
--- 获取咨询工单数据
-ticket_data AS (
-    SELECT 
-        ticket_id,
-        city_name,
-        ctime AS ticket_create_time,
-        three_current_name,
-        parent_name,
-        ticket_status,
-        question_desc
-    FROM rpt.rpt_trusteeship_private_fuwu_houseout_renter_da 
-    WHERE pt = '20260202000000'
-        AND parent_name = '维修'  -- 一级分类为维修
-        AND ticket_status NOT IN (5, 6)  -- 排除无效单和重复单
-        AND three_current_name NOT IN (
-            '指定服务者',
-            '取消维修订单',
-            '表扬维修师傅',
-            '维修下单',
-            '下单流程咨询',
-            '服务范围内收费'
-        )  -- 剔除不相关的三级分类
-        AND ctime >= '2025-11-01 00:00:00'
-        AND ctime < '2027-01-01 00:00:00'
-),
--- 通过中间表关联维修单号和咨询工单
-relation_data AS (
-    SELECT DISTINCT
-        ticket_id,
-        repair_order
-    FROM ods.ods_plat_private_domain_ticket_repair_order_relation_da
-    WHERE pt = '20260202000000'
-        AND repair_order IS NOT NULL
-        AND ticket_id IS NOT NULL
-),
--- 拆分多个维修单号
-relation_expanded AS (
-    SELECT DISTINCT
-        ticket_id,
-        trim(repair_order_item) AS repair_order
-    FROM relation_data
-    LATERAL VIEW explode(split(repair_order, ',')) t AS repair_order_item
-    WHERE trim(repair_order_item) != ''
-),
+
 kk as (
         SELECT DISTINCT
         order_create_time,
@@ -90,7 +47,7 @@ kk as (
 
 SELECT DISTINCT
     -- 1. 考核月份
-    SUBSTR(a.order_create_time, 1, 7) AS `创建月份`,
+    SUBSTR(a.service_end_time, 1, 7) AS `预约结束时间月份`,
     
     -- 2. 订单创建时间
     a.order_create_time AS `订单创建时间`,
@@ -339,28 +296,39 @@ SELECT DISTINCT
     END AS `紧急单考核时间`,
     
     -- 25. 紧急单是否2h上门
-    CASE 
+     CASE 
         WHEN kk.`总订单` IS not NULL 
              AND a.first_sign_time IS NOT NULL
              AND a.first_sign_time != '1000-01-01 00:00:00'
              AND SUBSTR(a.first_sign_time, 1, 4) >= '2000'
-        THEN
-            CASE 
-                WHEN (UNIX_TIMESTAMP(a.first_sign_time, 'yyyy-MM-dd HH:mm:ss') 
-                      - UNIX_TIMESTAMP(a.order_create_time, 'yyyy-MM-dd HH:mm:ss')) / 60 <= 120
-                THEN '是'
-                ELSE '否'
+             AND (UNIX_TIMESTAMP(a.first_sign_time) 
+                      - UNIX_TIMESTAMP(a.order_create_time)) / 60 <= 120
+             THEN '是'
+             ELSE '否'
             END
-        ELSE NULL
-    END AS `紧急单是否2h上门`,
-    
-    -- 26. 是否维修咨询订单（剔除咨询非师傅问题）
-    CASE 
-        WHEN consult_ticket.ticket_id IS NOT NULL THEN '是'
-        ELSE '否'
-    END AS `是否维修咨询订单`,
-    a.service_end_time as `预约结束时间`
+     AS `紧急单是否2h上门`,
 
+    CASE 
+    WHEN service_order_complete_time IS NULL 
+      OR service_order_complete_time = '1000-01-01 00:00:00' 
+    THEN 0 
+    WHEN first_sign_time IS NOT NULL 
+      AND first_sign_time != '1000-01-01 00:00:00' 
+      AND first_sign_time < service_end_time 
+    THEN 
+        CASE 
+            WHEN (unix_timestamp(service_order_complete_time) - unix_timestamp(first_sign_time)) / 3600.0 <= 24 
+            THEN 1 ELSE 0 
+        END
+    ELSE 
+        CASE 
+            WHEN (unix_timestamp(service_order_complete_time) - unix_timestamp(service_end_time)) / 3600.0 <= 24 
+            THEN 1 ELSE 0 
+        END
+    END 
+    as `租后是否及时完工`,
+	case when  service_order_complete_time is not null and service_order_complete_time != '1000-01-01 00:00:00' and  ((unix_timestamp(a.service_order_complete_time) - unix_timestamp(a.order_create_time))/3600.0 <= 48 or 
+										((unix_timestamp(a.service_order_complete_time) - unix_timestamp(a.order_create_time))/3600.0 <= 7*24 and (SUBSTR(a.service_order_complete_time,1,10) <= house.lease_start_date or house.lease_start_date < a.order_create_time )) ) then 1 else 0 end  as `检修是否及时完工`
 FROM  base_data a
 INNER JOIN (
         SELECT DISTINCT order_no AS oth_orderno,
@@ -385,11 +353,4 @@ INNER JOIN (
     ) b ON b.oth_orderno = a.order_no
 -- 关联紧急单数据
 left join kk on kk.order_no_1 = a.order_no
--- 关联咨询工单数据
-LEFT JOIN relation_expanded consult_relation
-    ON a.order_no = consult_relation.repair_order
-LEFT JOIN ticket_data consult_ticket
-    ON consult_relation.ticket_id = consult_ticket.ticket_id
 LEFT JOIN house_lease_info house on a.house_resource_id=house.house_code
-
-WHERE  a.city_name='济南市' and SUBSTR(a.order_create_time, 1, 7)='2025-11'

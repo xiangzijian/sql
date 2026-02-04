@@ -229,4 +229,4 @@ LEFT JOIN base_complete_orders t2
 LEFT JOIN molecule_orders t3
     ON t2.house_resource_id = t3.house_resource_id  
     AND t2.function_name = t3.`下单功能间名称` 
-    AND t2.product_name = t3.`下单商品名称`;
+    AND t2.product_name = t3.`下单商品名称`
