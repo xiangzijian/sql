@@ -4,7 +4,7 @@
 hive分区标识
 string	否	C2		可空		否	是
 2	create_month		
-创建月份
+订单创建月份
 string	否	C2		可空		否	否
 3	order_create_time		
 订单创建时间
@@ -43,7 +43,7 @@ string	否	C2		可空		否	否
 房源最新出租时间
 string	否	C2		可空		否	否
 15	service_start_time		
-预约服务开始时间
+预约开始时间
 string	否	C2		可空		否	否
 16	label_group12		
 租后维修/检修
@@ -54,45 +54,51 @@ string	否	C2		可空		否	否
 18	cancel_time		
 取消时间
 string	否	C2		可空		否	否
-19	cancel_order		
-取消单是否剔除
+19	cancel_night		
+是否夜间取消
 string	否	C2		可空		否	否
-20	cancel_reason		
-取消单剔除原因
+20	cancel_daytime		
+是否白天致电前取消
 string	否	C2		可空		否	否
-21	f_call_time		
+21	cancel_30m		
+是否紧急单30分钟内取消
+string	否	C2		可空		否	否
+22	cancel_1h		
+是否普通单1小时内取消
+string	否	C2		可空		否	否
+23	calltime_one		
 首次致电时间
 string	否	C2		可空		否	否
-22	call_time_30m		
+24	calltime_30m		
 是否30分钟内致电
 string	否	C2		可空		否	否
-23	call_time_1h		
+25	calltime_1h		
 是否1小时内致电
 string	否	C2		可空		否	否
-24	service_end_time		
+26	assessment_time		
 普通单及时上门考核时间
 string	否	C2		可空		否	否
-25	cancel_call_time		
+27	cancel_call1		
 是否首次致电前取消
 string	否	C2		可空		否	否
-26	irst_sign_time		
+28	first_sign_time		
 首次签到时间
 string	否	C2		可空		否	否
-27	time_0door		
-普通单上门时间
+29	time_null		
+普通单上门时长
 string	否	C2		可空		否	否
-28	time_jishi		
+30	normal_is_sign_advance		
 普通单是否及时上门
 string	否	C2		可空		否	否
-29	service_end_time_12		
+31	urgent_assessment_time		
 紧急单考核时间
 string	否	C2		可空		否	否
-30	12time_2h		
+32	urgent_is_sign_advance		
 紧急单是否2h上门
 string	否	C2		可空		否	否
-31	consult_ticket		
-是否维修咨询订单
+33	lease_task_complete		
+租后是否及时完工
 string	否	C2		可空		否	否
-32	end_time		
-预约服务结束时间
+34	examine_task_complete		
+检修是否及时完工
 string	否	C2		可空		否	否

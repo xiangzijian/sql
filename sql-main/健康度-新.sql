@@ -17,14 +17,14 @@ t2_agg AS (
         create_month, 
         city_name, 
         service_order_supplier_name,
-        count(distinct case when label_group12 = '租后维修' and `time_jishi` ='是' and performance_mode != '紧急单'  then order_no end) as `普通上门分子`,
-        count(distinct case when label_group12 = '租后维修' and `cancel_call_time` ='否'  and performance_mode != '紧急单' then order_no end) as `普通上门分母`,
-        count(distinct case when `call_time_1h` ='是' and performance_mode != '紧急单' and cancel_order='否' and order_category='其他' and label_group12 ='租后维修' then order_no end) as `普通致电分子`,
-        count(distinct case when performance_mode != '紧急单' and cancel_order='否'   and order_category='其他' and label_group12 ='租后维修' then order_no end) as `普通致电分母`,
-        count(distinct case when `call_time_30m`= '是' and performance_mode = '紧急单' and cancel_order='否' and order_category='其他' then order_no end) as `紧急致电分子`,
-        count(distinct case when performance_mode = '紧急单' and cancel_order='否' and order_category='其他' then order_no end) as `紧急致电分母`,
-      count(distinct case when performance_mode = '紧急单' and (`cancel_reason` IS NULL OR `cancel_reason` NOT IN ('夜间取消单', '白天致电前取消')) and `12time_2h` ='是' then order_no end) as `紧急上门分子`,
-        count(distinct case when performance_mode = '紧急单' and (`cancel_reason` IS NULL OR `cancel_reason` NOT IN ('夜间取消单', '白天致电前取消') )  then order_no end) as `紧急上门分母`
+        count(distinct case when performance_mode != '紧急单' and label_group12 ='租后维修' and order_category='其他' and cancel_1h= 0 and calltime_1h= '是' then order_no end) as `普通致电分子`,
+        count(distinct case when performance_mode != '紧急单' and label_group12 ='租后维修' and order_category='其他' and cancel_1h= 0  then order_no end) as `普通致电分母`,
+        count(distinct case when `call_time_30m`= '是' and performance_mode = '紧急单'  and order_category='其他' and cancel_30m= 0 then order_no end) as `紧急致电分子`,
+        count(distinct case when performance_mode = '紧急单'  and order_category='其他' and cancel_30m= 0 then order_no end) as `紧急致电分母`,
+        count(distinct case when performance_mode = '紧急单' and  label_group12 = '租后维修' and cancel_night = 0  and cancel_daytime = 0  and `urgent_is_sign_advance` ='是' then order_no end) as `紧急上门分子`,
+        count(distinct case when performance_mode = '紧急单' and  label_group12 = '租后维修' and cancel_night = 0  and cancel_daytime = 0 then order_no end) as `紧急上门分母`,
+        count(distinct case when label_group12 = '检修' and  examine_task_complete = 1 then order_no end) as `检修完工分子`,
+        count(distinct case when label_group12 = '检修' then order_no end) as `检修完工分母`
     FROM rpt.rpt_on_time_rate 
     WHERE pt='20260201000000' 
     GROUP BY create_month, city_name, service_order_supplier_name
@@ -36,10 +36,10 @@ t3_agg AS (
         SUBSTR(service_end_time, 1, 7) as end_month, 
         city_name, 
         service_order_supplier_name,
-        count(distinct case when label_group12 = '检修' and ((unix_timestamp(service_order_complete_time) - unix_timestamp(order_create_time))/3600.0 <= 48 or ((unix_timestamp(service_order_complete_time) - unix_timestamp(order_create_time))/3600.0 <= 7*24 and service_order_complete_time < lease_start_date )) then order_no end) as `检修完工分子`,
-        count(distinct case when label_group12 = '检修' then order_no end) as `检修完工分母`,
-        count(distinct case when label_group12 = '租后维修' and order_category='其他' and cancel_call_time ='否' and (unix_timestamp(service_order_complete_time) - unix_timestamp(end_time)) /3600.0 <=24 then order_no end) as `租后完工分子`,
-        count(distinct case when label_group12 = '租后维修' and  cancel_call_time ='否' and order_category='其他' then order_no end) as `租后完工分母`
+        count(distinct case when label_group12 = '租后维修' and `normal_is_sign_advance` ='是' and `cancel_call1` ='否'  and performance_mode != '紧急单'  then order_no end) as `普通上门分子`,
+        count(distinct case when label_group12 = '租后维修' and `cancel_call1` ='否'  and performance_mode != '紧急单' then order_no end) as `普通上门分母`,
+        count(distinct case when label_group12 = '租后维修' and order_category='其他' and `cancel_call1` ='否' and lease_task_complete = 1  then order_no end) as `租后完工分子`,
+        count(distinct case when label_group12 = '租后维修' and order_category='其他' and `cancel_call1` ='否' then order_no end) as `租后完工分母`
     FROM rpt.rpt_on_time_rate 
     WHERE pt='20260201000000' 
     GROUP BY SUBSTR(service_end_time, 1, 7), city_name, service_order_supplier_name
@@ -111,12 +111,12 @@ SELECT
     t1.month_string,
     t1.city_name,
     t2.service_order_supplier_name,
-    COALESCE(t2.`普通上门分子`, 0) AS `普通上门分子`,
-    COALESCE(t2.`普通上门分母`, 0) AS `普通上门分母`,
+    COALESCE(t3.`普通上门分子`, 0) AS `普通上门分子`,
+    COALESCE(t3.`普通上门分母`, 0) AS `普通上门分母`,
     COALESCE(t2.`紧急上门分子`, 0) AS `紧急上门分子`,
     COALESCE(t2.`紧急上门分母`, 0) AS `紧急上门分母`,
-    COALESCE(t3.`检修完工分子`, 0) AS `检修完工分子`,
-    COALESCE(t3.`检修完工分母`, 0) AS `检修完工分母`,
+    COALESCE(t2.`检修完工分子`, 0) AS `检修完工分子`,
+    COALESCE(t2.`检修完工分母`, 0) AS `检修完工分母`,
     COALESCE(t3.`租后完工分子`, 0) AS `租后完工分子`,
     COALESCE(t3.`租后完工分母`, 0) AS `租后完工分母`,
     COALESCE(t2.`普通致电分子`, 0) AS `普通致电分子`,
