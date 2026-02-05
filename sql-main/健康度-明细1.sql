@@ -1,4 +1,26 @@
-WITH  house_lease_info AS (
+--模板查询：新-明细1
+WITH  
+base_data AS (
+    SELECT order_no,order_create_time,city_name,bizcircle_name,
+    service_order_supplier_name,service_order_professional_name,
+    service_order_professional_ucid,house_resource_id,max(service_order_complete_time) as service_order_complete_time
+    ,max(service_start_time) as service_start_time
+    ,max(label_group) as label_group
+    ,max(lease_status) as lease_status
+    ,max(order_status) as order_status
+    ,max(cancel_time) as cancel_time
+    ,max(first_call_time) as first_call_time
+    ,max(service_end_time) as service_end_time
+    ,max(first_sign_time) as first_sign_time
+    FROM olap.olap_hj_fas_main_order_service_info_da
+    WHERE pt = '${-1d_pt}'
+    AND order_type = 16  -- 维修订单
+    AND label_group != '8'  -- 剔除门锁订单
+    group by order_no,order_create_time,city_name,bizcircle_name,service_order_supplier_name
+    ,service_order_professional_name,service_order_professional_ucid,house_resource_id
+) 
+,
+house_lease_info AS (
     SELECT 
         house_code,
         max(effective_start_date)  AS lease_start_date  -- 合同起租日
@@ -9,50 +31,7 @@ WITH  house_lease_info AS (
         AND SUBSTR(effective_start_date, 1, 7) >= '2025-05' 
         group by house_code
 ),
--- 获取咨询工单数据
-ticket_data AS (
-    SELECT 
-        ticket_id,
-        city_name,
-        ctime AS ticket_create_time,
-        three_current_name,
-        parent_name,
-        ticket_status,
-        question_desc
-    FROM rpt.rpt_trusteeship_private_fuwu_houseout_renter_da 
-    WHERE pt = '${-1d_pt}'
-        AND parent_name = '维修'  -- 一级分类为维修
-        AND ticket_status NOT IN (5, 6)  -- 排除无效单和重复单
-        AND three_current_name NOT IN (
-            '指定服务者',
-            '取消维修订单',
-            '表扬维修师傅',
-            '维修下单',
-            '下单流程咨询',
-            '服务范围内收费'
-        )  -- 剔除不相关的三级分类
-        AND ctime >= '2025-11-01 00:00:00'
-        AND ctime < '2027-01-01 00:00:00'
-),
--- 通过中间表关联维修单号和咨询工单
-relation_data AS (
-    SELECT DISTINCT
-        ticket_id,
-        repair_order
-    FROM ods.ods_plat_private_domain_ticket_repair_order_relation_da
-    WHERE pt = '${-1d_pt}'
-        AND repair_order IS NOT NULL
-        AND ticket_id IS NOT NULL
-),
--- 拆分多个维修单号
-relation_expanded AS (
-    SELECT DISTINCT
-        ticket_id,
-        trim(repair_order_item) AS repair_order
-    FROM relation_data
-    LATERAL VIEW explode(split(repair_order, ',')) t AS repair_order_item
-    WHERE trim(repair_order_item) != ''
-),
+
 kk as (
         SELECT DISTINCT
         order_create_time,
@@ -62,16 +41,17 @@ kk as (
         case when is_30_min_urgent_call = 1 and (is_urgent_order = 1 OR is_urgent_switch = 1) then order_no END as `紧急30分钟致电单`
     FROM rpt.rpt_jiafu_urgent_order_info_da
     WHERE pt = '${-1d_pt}'
-    AND substr(order_create_time, 1, 7) >= '2025-01'
+    AND substr(order_create_time, 1, 7) >= '2025-06'
     AND (urgent_flag in (1, 2) or performance_mode in (1))
 )
+
 
 insert overwrite table rpt.rpt_on_time_rate partition (pt='${-1d_pt}')
 
 
 SELECT DISTINCT
     -- 1. 考核月份
-    SUBSTR(a.order_create_time, 1, 7) AS `创建月份`,
+    SUBSTR(a.order_create_time, 1, 7) AS `订单创建月份`,
     
     -- 2. 订单创建时间
     a.order_create_time AS `订单创建时间`,
@@ -101,7 +81,7 @@ SELECT DISTINCT
                 '京北其他定损', '京南其他定损'
             ) THEN 1 ELSE 0 END = 1 
             THEN '定损类'
-            WHEN CASE WHEN b.commodity_name_list1 LIKE '%漏水%' OR b.commodity_name_list1 in ( '漏水专项检修','SCM00300001672373','消防器材') THEN 1 ELSE 0 END = 1 
+            WHEN CASE WHEN  b.commodity_name_list1 in ( '漏水专项检修','SCM00300001672373','消防器材') THEN 1 ELSE 0 END = 1 
             THEN '漏水类'
             ELSE '其他'
     END AS `订单分类`,
@@ -287,7 +267,7 @@ SELECT DISTINCT
                 ELSE NULL
             END
         ELSE NULL
-    END AS `普通单上门时间`,
+    END AS `普通单上门时长`,
     
     -- 23. 普通单是否及时上门（首次签到时间小于考核时间的就是是）
     CASE 
@@ -320,29 +300,59 @@ SELECT DISTINCT
     END AS `紧急单考核时间`,
     
     -- 25. 紧急单是否2h上门
-    CASE 
+     CASE 
         WHEN kk.`总订单` IS not NULL 
              AND a.first_sign_time IS NOT NULL
              AND a.first_sign_time != '1000-01-01 00:00:00'
              AND SUBSTR(a.first_sign_time, 1, 4) >= '2000'
-        THEN
-            CASE 
-                WHEN (UNIX_TIMESTAMP(a.first_sign_time, 'yyyy-MM-dd HH:mm:ss') 
-                      - UNIX_TIMESTAMP(a.order_create_time, 'yyyy-MM-dd HH:mm:ss')) / 60 <= 120
-                THEN '是'
-                ELSE '否'
+             AND (UNIX_TIMESTAMP(a.first_sign_time) 
+                      - UNIX_TIMESTAMP(a.order_create_time)) / 60 <= 120
+             THEN '是'
+             ELSE '否'
             END
-        ELSE NULL
-    END AS `紧急单是否2h上门`,
-    
-    -- 26. 是否维修咨询订单（剔除咨询非师傅问题）
-    CASE 
-        WHEN consult_ticket.ticket_id IS NOT NULL THEN '是'
-        ELSE '否'
-    END AS `是否维修咨询订单`,
-    a.service_end_time as `预约结束时间`
+     AS `紧急单是否2h上门`,
 
-FROM olap.olap_hj_fas_main_order_service_info_da a
+    CASE 
+    WHEN service_order_complete_time IS NULL 
+      OR service_order_complete_time = '1000-01-01 00:00:00' 
+    THEN 0 
+    WHEN first_sign_time IS NOT NULL 
+      AND first_sign_time != '1000-01-01 00:00:00' 
+      AND first_sign_time < service_end_time 
+    THEN 
+        CASE 
+            WHEN (unix_timestamp(service_order_complete_time) - unix_timestamp(first_sign_time)) / 3600.0 <= 24 
+            THEN 1 ELSE 0 
+        END
+    ELSE 
+        CASE 
+            WHEN (unix_timestamp(service_order_complete_time) - unix_timestamp(service_end_time)) / 3600.0 <= 24 
+            THEN 1 ELSE 0 
+        END
+    END 
+    as `租后是否及时完工`,
+	CASE 
+    WHEN a.service_order_complete_time IS NOT NULL 
+     AND a.service_order_complete_time != '1000-01-01 00:00:00' 
+     AND (
+        -- 1. 48小时内
+        (unix_timestamp(a.service_order_complete_time) - unix_timestamp(a.order_create_time)) / 3600.0 <= 48
+        OR 
+        -- 2. 7天内 AND (无起租 OR 起租不在检修期间)
+        (
+            (unix_timestamp(a.service_order_complete_time) - unix_timestamp(a.order_create_time)) / 3600.0 <= 168
+            AND NOT (
+                house.lease_start_date IS NOT NULL 
+                AND house.lease_start_date >= SUBSTR(a.order_create_time, 1, 10)
+                AND house.lease_start_date <= SUBSTR(a.service_order_complete_time, 1, 10)
+            )
+        )
+     )
+    THEN 1 
+    ELSE 0 
+    END AS `检修是否及时完工`,
+    a.service_end_time as `预约结束时间`
+FROM  base_data a
 INNER JOIN (
         SELECT DISTINCT order_no AS oth_orderno,
         commodity_name_list1
@@ -360,16 +370,10 @@ INNER JOIN (
             '源和里仁家具海安有限公司',
             '匠云（北京）科技有限公司'
         )
+      AND commodity_name_list1 NOT IN (
+            '夏季空调预检', 'SCM00300001672373', '漏水专项检修','消防器材', '定损', '漏水定损','火灾定损','其他定损', '京北漏水定损', '京南漏水定损','京北火灾定损', '京南火灾定损',
+            '京北其他定损', '京南其他定损')
     ) b ON b.oth_orderno = a.order_no
 -- 关联紧急单数据
 left join kk on kk.order_no_1 = a.order_no
--- 关联咨询工单数据
-LEFT JOIN relation_expanded consult_relation
-    ON a.order_no = consult_relation.repair_order
-LEFT JOIN ticket_data consult_ticket
-    ON consult_relation.ticket_id = consult_ticket.ticket_id
 LEFT JOIN house_lease_info house on a.house_resource_id=house.house_code
-
-WHERE a.pt = '${-1d_pt}'
-    AND a.order_type = 16  -- 维修订单
-    AND a.label_group != '8'  -- 剔除门锁订单

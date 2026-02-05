@@ -1,3 +1,7 @@
+
+-- 26健康度看板rpt_february_2026_maintenance_health_dashboard
+
+
 WITH numbers AS (
     -- 你的日历表保持不变
     SELECT
@@ -17,23 +21,23 @@ t2_agg AS (
         create_month, 
         city_name, 
         service_order_supplier_name,
-        count(distinct case when performance_mode != '紧急单' and label_group12 ='租后维修' and order_category='其他' and cancel_1h= 0 and calltime_1h= '是' then order_no end) as `普通致电分子`,
-        count(distinct case when performance_mode != '紧急单' and label_group12 ='租后维修' and order_category='其他' and cancel_1h= 0  then order_no end) as `普通致电分母`,
-        count(distinct case when `call_time_30m`= '是' and performance_mode = '紧急单'  and order_category='其他' and cancel_30m= 0 then order_no end) as `紧急致电分子`,
-        count(distinct case when performance_mode = '紧急单'  and order_category='其他' and cancel_30m= 0 then order_no end) as `紧急致电分母`,
+        count(distinct case when performance_mode != '紧急单' and label_group12 ='租后维修' and order_category='其他' and cancel_1h= 0 and cancel_night = 0 and calltime_1h= '是' then order_no end) as `普通致电分子`,
+        count(distinct case when performance_mode != '紧急单' and label_group12 ='租后维修' and order_category='其他' and cancel_1h= 0 and cancel_night = 0 then order_no end) as `普通致电分母`,
+        count(distinct case when calltime_30m= '是' and performance_mode = '紧急单'  and order_category='其他' and cancel_30m= 0 and cancel_night = 0 then order_no end) as `紧急致电分子`,
+        count(distinct case when performance_mode = '紧急单'  and order_category='其他' and cancel_30m= 0 and cancel_night = 0 then order_no end) as `紧急致电分母`,
         count(distinct case when performance_mode = '紧急单' and  label_group12 = '租后维修' and cancel_night = 0  and cancel_daytime = 0  and `urgent_is_sign_advance` ='是' then order_no end) as `紧急上门分子`,
         count(distinct case when performance_mode = '紧急单' and  label_group12 = '租后维修' and cancel_night = 0  and cancel_daytime = 0 then order_no end) as `紧急上门分母`,
         count(distinct case when label_group12 = '检修' and  examine_task_complete = 1 then order_no end) as `检修完工分子`,
         count(distinct case when label_group12 = '检修' then order_no end) as `检修完工分母`
     FROM rpt.rpt_on_time_rate 
-    WHERE pt='20260201000000' 
+    WHERE pt='${-1d_pt}' 
     GROUP BY create_month, city_name, service_order_supplier_name
 ),
 
 -- 2. 按预约结束时间计算
 t3_agg AS (
     SELECT 
-        SUBSTR(service_end_time, 1, 7) as end_month, 
+        SUBSTR(service_end_time , 1, 7) as end_month, 
         city_name, 
         service_order_supplier_name,
         count(distinct case when label_group12 = '租后维修' and `normal_is_sign_advance` ='是' and `cancel_call1` ='否'  and performance_mode != '紧急单'  then order_no end) as `普通上门分子`,
@@ -41,7 +45,7 @@ t3_agg AS (
         count(distinct case when label_group12 = '租后维修' and order_category='其他' and `cancel_call1` ='否' and lease_task_complete = 1  then order_no end) as `租后完工分子`,
         count(distinct case when label_group12 = '租后维修' and order_category='其他' and `cancel_call1` ='否' then order_no end) as `租后完工分母`
     FROM rpt.rpt_on_time_rate 
-    WHERE pt='20260201000000' 
+    WHERE pt='${-1d_pt}' 
     GROUP BY SUBSTR(service_end_time, 1, 7), city_name, service_order_supplier_name
 ),
  -- 3.运力满足
@@ -57,7 +61,7 @@ t3_agg AS (
         sum(case when commodity_code='维修家电'  then  two_day else 0 end) as `2日内运力满足家电分子`,    
         sum(case when commodity_code='维修家电' then request else 0 end ) as `家电分母`
         from rpt.rpt_delivery_capacity
-        WHERE pt='20260201000000'
+        WHERE pt='${-1d_pt}'
         GROUP BY month_y, city_name, supplier_name
  ),
 -- 4.资质率 - 取每月最后一天的快照数据
@@ -92,7 +96,7 @@ t6_agg as (
         count(distinct case when fenzi ='是' then CONCAT(product_code, '-', zu_order) end) as `租期返修分子`,
         count(distinct CONCAT(product_code, '-', zu_order)) as `租期返修分母`
     FROM rpt.rpt_zu_order_fanxiu 
-    WHERE pt='20260201000000' 
+    WHERE pt='${-1d_pt}' 
     GROUP BY month_string, city_name, service_order_supplier_name
 ),
 -- 6检修返修
@@ -104,9 +108,12 @@ t6_agg as (
         count(distinct concat(id, room, shangp_1)) as `检修分母`,
         count(distinct case when order_2 is not null then concat(order_2, room_1, shangp_2) end  ) as `检修分子`
     FROM rpt.rpt_jianxiu_fanxiu 
-    WHERE pt='20260201000000'   
+    WHERE pt='${-1d_pt}'   
     GROUP BY month_time, city, shang_2
 )
+
+insert overwrite table rpt.rpt_february_2026_maintenance_health_dashboard partition (pt='${-1d_pt}')
+
 SELECT 
     t1.month_string,
     t1.city_name,
@@ -163,4 +170,3 @@ left JOIN t7_agg t7
     AND t1.city_name = t7.city 
     AND t2.service_order_supplier_name = t7.shang_2
 WHERE t2.create_month IS NOT NULL
-

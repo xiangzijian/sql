@@ -328,7 +328,9 @@ SELECT DISTINCT
     END 
     as `租后是否及时完工`,
 	case when  service_order_complete_time is not null and service_order_complete_time != '1000-01-01 00:00:00' and  ((unix_timestamp(a.service_order_complete_time) - unix_timestamp(a.order_create_time))/3600.0 <= 48 or 
-										((unix_timestamp(a.service_order_complete_time) - unix_timestamp(a.order_create_time))/3600.0 <= 7*24 and (SUBSTR(a.service_order_complete_time,1,10) <= house.lease_start_date or house.lease_start_date < a.order_create_time )) ) then 1 else 0 end  as `检修是否及时完工`
+										((unix_timestamp(a.service_order_complete_time) - unix_timestamp(a.order_create_time))/3600.0 <= 7*24 and (SUBSTR(a.service_order_complete_time,1,10) <= house.lease_start_date or house.lease_start_date < a.order_create_time )) ) then 1 else 0 end  as `检修是否及时完工`,
+    a.service_end_time as `预约结束时间`
+
 FROM  base_data a
 INNER JOIN (
         SELECT DISTINCT order_no AS oth_orderno,
