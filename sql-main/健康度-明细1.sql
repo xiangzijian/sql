@@ -20,18 +20,51 @@ base_data AS (
     ,service_order_professional_name,service_order_professional_ucid,house_resource_id
 ) 
 ,
-house_lease_info AS (
+house_deadline_info AS (
     SELECT 
-        house_code,
-        max(effective_start_date)  AS lease_start_date  -- 合同起租日
-    FROM rpt.rpt_plat_manager_workbench_manager_task_da
-    WHERE pt = '${-1d_pt}'  
-        AND effective_start_date IS NOT NULL
-        AND effective_start_date != '1000-01-01 00:00:00'
-        AND SUBSTR(effective_start_date, 1, 7) >= '2025-05' 
-        group by house_code
+        trusteeship_housedel_code,
+        COALESCE(
+            plan_into_date,
+            GREATEST(effect_start_date, SUBSTR(contract_sign_time, 1, 10))
+        ) AS deadline
+    FROM (
+        SELECT 
+            t1.trusteeship_housedel_code,
+            t1.effect_start_date,
+            t1.contract_sign_time,
+            t1.contract_code,
+            t2.plan_into_date
+        FROM (
+            SELECT 
+                trusteeship_housedel_code,
+                SUBSTR(effect_start_date, 1, 10) AS effect_start_date,
+                contract_code,
+                sign_date AS contract_sign_time,
+                ROW_NUMBER() OVER(PARTITION BY contract_code ORDER BY property_submit_time DESC) AS tijiao
+            FROM olap.olap_trusteeship_hdel_examine_divide_da
+            WHERE pt = CONCAT(DATE_FORMAT(DATE_SUB(CURRENT_DATE(), 1), 'yyyyMMdd'), '000000')
+                AND SUBSTR(COALESCE(back_date, '2050-12-31'), 1, 10) >= SUBSTR(effect_start_date, 1, 10)
+                AND task_type <> 12
+        ) t1
+        LEFT JOIN (
+            SELECT DISTINCT
+                houseout_contract_code AS contract_code,
+                open_time AS plan_into_date
+            FROM (
+                SELECT *,
+                    RANK() OVER(PARTITION BY houseout_contract_code ORDER BY open_time ASC) AS rk
+                FROM olap.olap_trusteeship_evt_open_door_record_da
+                WHERE pt = CONCAT(DATE_FORMAT(DATE_SUB(CURRENT_DATE(), 1), 'yyyyMMdd'), '000000')
+                    AND open_user_type IN (1, 2)  -- 签约人、同住人
+                    AND open_way IN (1, 4)
+                    AND open_success = '1'
+                    AND houseout_contract_code IS NOT NULL
+            ) aa 
+            WHERE aa.rk = 1
+        ) t2 ON t1.contract_code = t2.contract_code
+        WHERE t1.tijiao = 1
+    ) base
 ),
-
 kk as (
         SELECT DISTINCT
         order_create_time,
@@ -97,7 +130,7 @@ SELECT DISTINCT
     -- 11.完工时间
     a.service_order_complete_time,
     -- 12.房源最新出租时间
-    house.lease_start_date,
+    house.deadline,
     -- 13.预约开始时间
     a.service_start_time,
     -- 11. 租后维修/检修
@@ -336,15 +369,14 @@ SELECT DISTINCT
      AND a.service_order_complete_time != '1000-01-01 00:00:00' 
      AND (
         -- 1. 48小时内
-        (unix_timestamp(a.service_order_complete_time) - unix_timestamp(a.order_create_time)) / 3600.0 <= 48
+        (unix_timestamp(a.service_order_complete_time) - unix_timestamp(a.order_create_time)) / 3600.0 <= 72
         OR 
         -- 2. 7天内 AND (无起租 OR 起租不在检修期间)
         (
-            (unix_timestamp(a.service_order_complete_time) - unix_timestamp(a.order_create_time)) / 3600.0 <= 168
-            AND NOT (
-                house.lease_start_date IS NOT NULL 
-                AND house.lease_start_date >= SUBSTR(a.order_create_time, 1, 10)
-                AND house.lease_start_date <= SUBSTR(a.service_order_complete_time, 1, 10)
+             NOT (
+                house.deadline IS NOT NULL 
+                AND house.deadline >= SUBSTR(a.order_create_time, 1, 10)
+                AND house.deadline <= SUBSTR(a.service_order_complete_time, 1, 10)
             )
         )
      )
@@ -376,4 +408,4 @@ INNER JOIN (
     ) b ON b.oth_orderno = a.order_no
 -- 关联紧急单数据
 left join kk on kk.order_no_1 = a.order_no
-LEFT JOIN house_lease_info house on a.house_resource_id=house.house_code
+LEFT JOIN house_deadline_info house on a.house_resource_id=house.trusteeship_housedel_code

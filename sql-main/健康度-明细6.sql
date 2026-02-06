@@ -16,7 +16,6 @@ consultation_tickets AS (
         rpt.rpt_trusteeship_private_fuwu_houseout_renter_da
     WHERE
         pt >= '20250601000000' 
-        AND pt <= '20260131000000'
         AND parent_name = '维修'  -- 一级分类为维修
         AND ticket_status NOT IN (5, 6)  -- 排除无效单和重复单
         AND three_current_name NOT IN (
@@ -28,7 +27,6 @@ consultation_tickets AS (
             '服务范围内收费'
         )  -- 剔除不相关的三级分类
         AND ctime >= '2025-06-01 00:00:00'
-        AND ctime < '2026-02-01 00:00:00'
     GROUP BY
         CONCAT_WS('-', SUBSTR(ctime, 1, 4), SUBSTR(ctime, 6, 2)),
         city_name,
@@ -84,7 +82,7 @@ manager_data AS (
                     pt = CONCAT(DATE_FORMAT(LAST_DAY(CONCAT_WS('-', SUBSTR(pt, 1, 4), SUBSTR(pt, 5, 2), '01')), 'yyyyMMdd'), '000000')
                     OR
                     -- 昨天的pt
-                    pt = CONCAT(DATE_FORMAT(DATE_SUB(CURRENT_DATE(), 1), 'yyyyMMdd'), '000000')
+                    pt = '${-1d_pt}'
                 )
             GROUP BY
                 pt,
@@ -110,7 +108,6 @@ month_city_bizcircle AS (
                 consultation_tickets
             WHERE
                 month_string >= '2025-06'
-                AND month_string <= '2026-01'
             
             UNION
             
@@ -124,18 +121,14 @@ month_city_bizcircle AS (
         ) t
 )
 
--- 最终统计输出
+insert overwrite table rpt.rpt_wanjia_weixiu_inquiry_volume partition (pt='${-1d_pt}')
+
 SELECT
     mcb.month_string AS `月份`,
     mcb.city_name AS `城市`,
     mcb.bizcircle_name AS `商圈`,
     NVL(ct.consultation_count, 0) AS `咨询工单数`,  -- 分子
-    NVL(md.house_kaohe_cnt, 0) AS `考核在管`,  -- 分母
-    CASE 
-        WHEN NVL(md.house_kaohe_cnt, 0) > 0 
-        THEN ROUND(NVL(ct.consultation_count, 0) * 100.0 / md.house_kaohe_cnt, 2)
-        ELSE 0 
-    END AS `咨询率(%)`  -- 咨询率 = 咨询工单数 / 考核在管 * 100
+    NVL(md.house_kaohe_cnt, 0) AS `考核在管`  -- 分母
 FROM
     month_city_bizcircle mcb
 LEFT JOIN
@@ -150,7 +143,6 @@ LEFT JOIN
     AND mcb.bizcircle_name = md.bizcircle_name  -- 加上商圈匹配
 WHERE
     mcb.month_string >= '2025-06'
-    AND mcb.month_string <= '2026-01'
 ORDER BY
     mcb.city_name,
     mcb.bizcircle_name,
