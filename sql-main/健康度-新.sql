@@ -63,22 +63,28 @@ t3_agg AS (
  ),
 -- 4.资质率 - 取每月最后一天的快照数据
 t5_month_last_day AS (
-    -- 找出每个月在表中实际存在的最后一天pt
     SELECT 
-        SUBSTR(pt, 1, 6) as month_key,
-        MAX(pt) as last_day_pt
-    FROM rpt.rpt_anquan_zizhi_chizheng_shanggang_hz
-    WHERE pt >= '20260101000000' 
-    GROUP BY SUBSTR(pt, 1, 6)
+        date_format(month_start, 'yyyyMM') as month_key,
+        CASE 
+            WHEN date_format(month_start, 'yyyyMM') = date_format(current_date(), 'yyyyMM') 
+            THEN concat(date_format(date_sub(current_date(), 1), 'yyyyMMdd'), '000000')
+            ELSE concat(date_format(last_day(month_start), 'yyyyMMdd'), '000000')
+        END as last_day_pt
+    FROM (
+        SELECT add_months('2026-01-01', pos) as month_start
+        FROM (
+            SELECT posexplode(split(space(CAST(months_between(current_date(), '2026-01-01') AS INT)), ' ')) as (pos, val)
+        ) t_gen
+    ) t_dates
 ),
 t5_agg AS (
     SELECT 
         CONCAT(SUBSTR(a.pt, 1, 4), '-', SUBSTR(a.pt, 5, 2)) as month_pt, 
         a.city_name,
-        max(a.zonghezizhi_renshu) as `综合资质分子`,
-        max(a.zongherenshu) as `综合资质分母`,
-        max(a.jiadianzizhi_renshu) as `家电资质分子`,
-        max(a.jiadianrenshu) as `家电资质分母`
+        sum(a.zonghezizhi_renshu) as `综合资质分子`,
+        sum(a.zongherenshu) as `综合资质分母`,
+        sum(a.jiadianzizhi_renshu) as `家电资质分子`,
+        sum(a.jiadianrenshu) as `家电资质分母`
     FROM rpt.rpt_anquan_zizhi_chizheng_shanggang_hz a
     INNER JOIN t5_month_last_day b 
         ON a.pt = b.last_day_pt
@@ -121,6 +127,7 @@ insert overwrite table rpt.rpt_february_2026_maintenance_health_dashboard partit
 
 SELECT 
     t1.month_string,
+    t1.city_name,
     t1.city_name,
     COALESCE(t3.`普通上门分子`, 0) AS `普通上门分子`,
     COALESCE(t3.`普通上门分母`, 0) AS `普通上门分母`,
