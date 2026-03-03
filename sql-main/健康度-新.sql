@@ -20,10 +20,10 @@ t2_agg AS (
     SELECT 
         create_month, 
         city_name, 
-        count(distinct case when performance_mode != '紧急单' and label_group12 ='租后维修' and order_category='其他' and cancel_1h= 0 and cancel_night = 0 and calltime_1h= '是' then order_no end) as `普通致电分子`,
-        count(distinct case when performance_mode != '紧急单' and label_group12 ='租后维修' and order_category='其他' and cancel_1h= 0 and cancel_night = 0 then order_no end) as `普通致电分母`,
-        count(distinct case when calltime_30m= '是' and performance_mode = '紧急单'  and order_category='其他' and cancel_30m= 0 and cancel_night = 0 then order_no end) as `紧急致电分子`,
-        count(distinct case when performance_mode = '紧急单'  and order_category='其他' and cancel_30m= 0 and cancel_night = 0 then order_no end) as `紧急致电分母`,
+        count(distinct case when performance_mode != '紧急单' and label_group12 ='租后维修' and order_category='其他' and cancel_1h= 0 and calltime_1h= '是' then order_no end) as `普通致电分子`,
+        count(distinct case when performance_mode != '紧急单' and label_group12 ='租后维修' and order_category='其他' and cancel_1h= 0 then order_no end) as `普通致电分母`,
+        count(distinct case when calltime_30m= '是' and performance_mode = '紧急单'  and order_category='其他' and cancel_30m= 0 then order_no end) as `紧急致电分子`,
+        count(distinct case when performance_mode = '紧急单'  and order_category='其他' and cancel_30m= 0 then order_no end) as `紧急致电分母`,
         count(distinct case when performance_mode = '紧急单' and  label_group12 = '租后维修' and cancel_night = 0  and cancel_daytime = 0  and `urgent_is_sign_advance` ='是' then order_no end) as `紧急上门分子`,
         count(distinct case when performance_mode = '紧急单' and  label_group12 = '租后维修' and cancel_night = 0  and cancel_daytime = 0 then order_no end) as `紧急上门分母`,
         count(distinct case when label_group12 = '检修' and  examine_task_complete = 1 then order_no end) as `检修完工分子`,
@@ -100,16 +100,15 @@ t6_agg as (
     WHERE pt='${-1d_pt}' 
     GROUP BY month_string, city_name
 ),
--- 6检修返修
  t7_agg as (
     SELECT 
-        month_time,
-        city,
-        count(distinct concat(id, room, shangp_1)) as `检修分母`,
-        count(distinct case when order_2 is not null then concat(order_2, room_1, shangp_2) end  ) as `检修分子`
-    FROM rpt.rpt_jianxiu_fanxiu 
-    WHERE pt='${-1d_pt}'   
-    GROUP BY month_time, city
+        t1.exam_month,
+        t1.city_name,
+        t1.`检修分母` as `检修分母`,
+        t2.`检修分母` as `检修分子`
+    FROM ( select count(distinct concat(order_code, function_name, product_name)) as `检修分母`,exam_month,city_name from rpt.rpt_trusteeship_hdel_examine_repair_ha1 where pt='${-1d_pt}' GROUP BY exam_month, city_name ) t1
+    inner join ( select count(distinct concat(order_no, function_name, product_name)) as `检修分母`,exam_month,city_name from rpt.rpt_trusteeship_hdel_examine_repair_ha where pt='${-1d_pt}' GROUP BY exam_month, city_name ) t2
+    on t1.exam_month = t2.exam_month and t1.city_name = t2.city_name
 ),
 -- 咨询相关
  t8_agg as (
@@ -180,4 +179,3 @@ left JOIN t7_agg t7
 left JOIN t8_agg t8 
     ON t1.month_string = t8.month_string 
     AND t1.city_name = t8.city_name 
-

@@ -16,7 +16,7 @@ WITH numbers AS (
         END AS rent_end
     FROM (
         SELECT n, city_name
-        FROM (SELECT stack(8, 6,7,8,9,10,11,12,13) AS n) t1
+        FROM (SELECT stack(9, 6,7,8,9,10,11,12,13,14) AS n) t1
         LATERAL VIEW EXPLODE(ARRAY('苏州市','成都市','南京市','上海市','北京市','天津市','宁波市','广州市','杭州市','武汉市','济南市','深圳市','西安市')) t2 AS city_name  
     ) t
 ),
@@ -152,7 +152,7 @@ base_complete_orders AS (
             AND order_type = 16
             AND label_group NOT IN ('8')
             AND city_name IN ('苏州市','成都市','南京市','上海市','北京市','天津市','宁波市','广州市','杭州市','武汉市','济南市','深圳市','西安市')
-            AND TO_DATE(service_order_complete_time) BETWEEN '2025-06-01' AND '2026-01-31'
+            AND TO_DATE(service_order_complete_time) BETWEEN '2025-06-01' AND '2026-12-31'
             AND SUBSTR(service_order_complete_time, 1, 4) NOT IN ('1990','2050','1000')
             AND service_order_complete_time IS NOT NULL
     ) a
